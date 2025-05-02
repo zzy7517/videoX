@@ -7,7 +7,7 @@ from datetime import datetime
 from .logger import setup_logger, log_exception
 from fastapi.middleware.cors import CORSMiddleware
 from .middleware import LoggingMiddleware
-from .services import shot_service, text_content_service
+from .services import shot_service, user_config_service
 
 # 设置日志
 logger = setup_logger("backend.api")
@@ -32,6 +32,7 @@ app.add_middleware(LoggingMiddleware)
 class ShotBase(BaseModel):
     """分镜基础模型，只包含内容"""
     content: str
+    t2i_prompt: Optional[str] = None # 新增：可选的 t2i_prompt
 
 class ShotCreate(ShotBase):
     """用于创建新分镜的请求模型 (总是添加到末尾)"""
@@ -39,12 +40,14 @@ class ShotCreate(ShotBase):
 
 class ShotUpdate(BaseModel):
     """用于更新分镜内容的请求模型"""
-    content: str # 只允许更新内容
+    content: Optional[str] = None # 改为可选
+    t2i_prompt: Optional[str] = None # 新增：可选的 t2i_prompt
 
 class ShotResponse(ShotBase):
     """分镜响应模型，包含数据库主键和当前顺序"""
     shot_id: int   # 稳定、唯一的数据库主键 ID
     order: int    # 当前在列表中的顺序，由后端维护
+    # t2i_prompt 继承自 ShotBase
 
     class Config:
         from_attributes = True # 从 ORM 对象属性自动填充
@@ -54,16 +57,19 @@ class InsertShotRequest(BaseModel):
     reference_shot_id: int        # 参考分镜的数据库 ID
     position: Literal["above", "below"] # 插入位置 ("above" 或 "below")
     content: str                # 新分镜的内容
+    t2i_prompt: Optional[str] = None # 新增：可选的 t2i_prompt
 
 class BulkUpdateRequest(BaseModel):
     """批量替换所有分镜的请求模型 (用于文本导入)"""
-    shots: List[ShotBase] # 要替换成的新分镜列表，只含内容
+    shots: List[ShotBase] # 要替换成的新分镜列表，现在包含 t2i_prompt
 
 # --- 文本内容相关模型 (保持不变) ---
 class TextContentBase(BaseModel):
     content: Optional[str] = None
+    global_comfyui_payload: Optional[dict] = None
+    comfyui_url: Optional[str] = None
 
-class TextContentResponse(TextContentBase):
+class ConfigResponse(TextContentBase):
     id: int
     created_at: datetime
     updated_at: datetime
@@ -97,15 +103,15 @@ def create_shot_at_end(shot_data: ShotCreate, db: Session = Depends(database.get
     创建新分镜，并将其添加到列表末尾。
     自动计算新分镜的 order。
     """
-    return shot_service.create_shot(db, shot_data.content)
+    return shot_service.create_shot(db, shot_data.content, shot_data.t2i_prompt)
 
 @main_router.put("/shots/{shot_id}", response_model=ShotResponse)
 def update_shot_content(shot_id: int, shot_update: ShotUpdate, db: Session = Depends(database.get_db)):
     """
-    更新指定 ID 分镜的内容。
+    更新指定 ID 分镜的内容和/或提示词。
     不改变其 order。
     """
-    return shot_service.update_shot(db, shot_id, shot_update.content)
+    return shot_service.update_shot(db, shot_id, shot_update.content, shot_update.t2i_prompt)
 
 @main_router.delete("/shots/{shot_id}", response_model=List[ShotResponse])
 def delete_shot_and_reorder(shot_id: int, db: Session = Depends(database.get_db)):
@@ -121,7 +127,7 @@ def insert_shot_and_reorder(request: InsertShotRequest, db: Session = Depends(da
     在指定参考分镜 ID 的上方或下方插入新分镜，并自动调整后续分镜的 order。
     返回插入并重新排序后的完整分镜列表。
     """
-    return shot_service.insert_shot(db, request.reference_shot_id, request.position, request.content)
+    return shot_service.insert_shot(db, request.reference_shot_id, request.position, request.content, request.t2i_prompt)
 
 @main_router.delete("/shots/", status_code=204) # 204 No Content 通常用于成功删除且无返回体
 def delete_all_shots(db: Session = Depends(database.get_db)):
@@ -138,27 +144,25 @@ def bulk_replace_shots(request: BulkUpdateRequest, db: Session = Depends(databas
     先删除所有现有分镜，然后根据请求列表创建新的分镜，并按顺序分配 order。
     常用于文本导入分割后的场景。
     """
-    # 提取内容列表
-    shots_content = [shot.content for shot in request.shots]
-    return shot_service.bulk_replace_shots(db, shots_content)
+    return shot_service.bulk_replace_shots(db, request.shots)
 
 
-# --- 文本内容 (Text Content) 相关 API ---
+# --- 配置 (User Config) 相关 API ---
 
-@main_router.get("/text/", response_model=TextContentResponse)
-def get_text_content(db: Session = Depends(database.get_db)):
+@main_router.get("/text/", response_model=ConfigResponse)
+def get_user_config(db: Session = Depends(database.get_db)):
     """获取文本内容 (单条记录)"""
-    return text_content_service.get_text_content(db)
+    return user_config_service.get_user_config(db)
 
-@main_router.put("/text/", response_model=TextContentResponse)
-def update_text_content(text: TextContentBase, db: Session = Depends(database.get_db)):
+@main_router.put("/text/", response_model=ConfigResponse)
+def update_user_config(text: TextContentBase, db: Session = Depends(database.get_db)):
     """更新文本内容 (单条记录)"""
-    return text_content_service.update_text_content(db, text.content)
+    return user_config_service.update_user_config(db, text.content, text.global_comfyui_payload, text.comfyui_url)
 
 @main_router.delete("/text/", status_code=204)
 def clear_text_content(db: Session = Depends(database.get_db)):
     """清空文本内容 (将内容设置为空字符串)"""
-    text_content_service.clear_text_content(db)
+    user_config_service.clear_text_content(db)
     return # 返回 204 No Content
 
 # 注册主路由

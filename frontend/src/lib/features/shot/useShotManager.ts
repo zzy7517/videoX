@@ -85,53 +85,65 @@ export const useShotManager = () => {
   /**
    * 更新本地分镜状态（用于输入时的即时反馈）
    */
-  const updateShotLocal = useCallback((id: number, content: string) => {
+  const updateShotLocal = useCallback((id: number, updates: Partial<Pick<Shot, 'content' | 't2i_prompt'>>) => {
     setShots(prev =>
       prev.map(shot =>
-        shot.shot_id === id ? { ...shot, content } : shot
+        shot.shot_id === id ? { ...shot, ...updates } : shot
       )
     );
     // 设置延迟保存
-    setupAutoSave(id, content);
-  }, []);
+    // setupAutoSave(id, updates); // 修改 setupAutoSave 以接受对象
+    // 找到对应的shot，并合并更新
+    const shotToSave = shots.find(s => s.shot_id === id);
+    if (shotToSave) {
+      setupAutoSave(id, { ...shotToSave, ...updates });
+    }
+  }, [shots]); // 添加 shots 依赖
 
   /**
    * 设置自动保存定时器
    */
-  const setupAutoSave = useCallback((id: number, content: string) => {
+  const setupAutoSave = useCallback((id: number, shotData: Partial<Shot>) => {
     // 如果已有定时器则清除
     if (saveTimersRef.current[id]) {
       clearTimeout(saveTimersRef.current[id]);
     }
     // 设置 3 秒后自动保存的定时器
     saveTimersRef.current[id] = setTimeout(() => {
-      saveShot(id, content);
+      saveShot(id, shotData);
       delete saveTimersRef.current[id];
     }, 3000);
-  }, []);
+  }, []); // 移除 saveShot 依赖，因为 saveShot 本身是 useCallback 且无依赖
 
   /**
    * 处理分镜文本框失焦事件，立即保存
    */
-  const handleShotBlur = useCallback((id: number, content: string) => {
+  const handleShotBlur = useCallback((id: number, updates: Partial<Pick<Shot, 'content' | 't2i_prompt'>>) => {
     // 如果存在自动保存定时器，先清除
     if (saveTimersRef.current[id]) {
       clearTimeout(saveTimersRef.current[id]);
       delete saveTimersRef.current[id];
     }
     // 立即触发保存
-    saveShot(id, content);
-  }, []);
+    // 找到对应的shot，并合并更新
+    const shotToSave = shots.find(s => s.shot_id === id);
+    if (shotToSave) {
+        saveShot(id, { ...shotToSave, ...updates });
+    } else {
+        // 如果找不到 shot (理论上不应该发生)，只保存传入的更新
+        saveShot(id, updates)
+    }
+  }, [shots]); // 添加 shots 依赖
 
   /**
    * 保存单个分镜内容到后端
    */
-  const saveShot = useCallback(async (id: number, content: string) => {
+  const saveShot = useCallback(async (id: number, shotData: Partial<Pick<Shot, 'content' | 't2i_prompt'>>) => {
     setShotMessage({ id, message: "保存中...", type: 'success' });
 
     try {
-      await apiSaveShot(id, content);
-      
+      await apiSaveShot(id, shotData); // 传递对象给 apiSaveShot
+
       // 显示成功消息
       setShotMessage({ id, message: "已保存", type: 'success' });
       // 3秒后清除消息

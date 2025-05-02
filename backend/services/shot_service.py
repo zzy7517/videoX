@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from ..logger import setup_logger, log_exception
 from . import user_shot_service
+from typing import Optional
 
 # 设置日志
 logger = setup_logger("backend.services.shot_service")
@@ -18,7 +19,7 @@ def get_all_shots(db: Session):
         db: 数据库会话
         
     Returns:
-        按顺序排列的分镜列表
+        按顺序排列的分镜列表 (包含 t2i_prompt)
     """
     logger.info("正在获取所有分镜 (按 order 排序)")
     try:
@@ -30,22 +31,24 @@ def get_all_shots(db: Session):
         log_exception(logger, f"获取分镜列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail="获取分镜列表失败")
 
-def create_shot(db: Session, content: str):
+def create_shot(db: Session, content: str, t2i_prompt: Optional[str] = None):
     """
     创建新分镜并添加到列表末尾
     
     Args:
         db: 数据库会话
         content: 分镜内容
+        t2i_prompt: 可选的提示词
         
     Returns:
         创建的分镜对象
     """
-    logger.info(f"正在末尾创建新分镜，内容: {content}")
+    logger.info(f"正在末尾创建新分镜，内容: {content}, 提示词: {t2i_prompt}")
     try:
         # 创建新分镜对象
         db_shot = models.Shot(
-            content=content
+            content=content,
+            t2i_prompt=t2i_prompt
         )
         db.add(db_shot)
         db.commit()
@@ -79,37 +82,51 @@ def create_shot(db: Session, content: str):
         log_exception(logger, f"创建分镜失败: {str(e)}")
         raise HTTPException(status_code=500, detail="创建分镜失败")
 
-def update_shot(db: Session, shot_id: int, content: str):
+def update_shot(db: Session, shot_id: int, content: Optional[str] = None, t2i_prompt: Optional[str] = None):
     """
-    更新指定ID分镜的内容
+    更新指定ID分镜的内容和/或提示词
     
     Args:
         db: 数据库会话
         shot_id: 分镜ID
-        content: 新的分镜内容
+        content: 新的分镜内容 (可选)
+        t2i_prompt: 新的提示词 (可选)
         
     Returns:
         更新后的分镜对象
     """
-    logger.info(f"正在更新 ID 为 {shot_id} 的分镜内容")
+    logger.info(f"正在更新 ID 为 {shot_id} 的分镜")
     try:
         db_shot = db.query(models.Shot).filter(models.Shot.shot_id == shot_id).first()
         if not db_shot:
             logger.warning(f"更新失败：找不到 ID 为 {shot_id} 的分镜")
             raise HTTPException(status_code=404, detail=f"找不到 ID 为 {shot_id} 的分镜")
 
-        db_shot.content = content
-        db.commit()
-        db.refresh(db_shot)
+        updated = False
+        if content is not None:
+            db_shot.content = content
+            updated = True
+            logger.info(f"分镜 ID {shot_id} 内容已更新")
+        if t2i_prompt is not None:
+            db_shot.t2i_prompt = t2i_prompt
+            updated = True
+            logger.info(f"分镜 ID {shot_id} 提示词已更新")
+
+        if updated:
+            db.commit()
+            db.refresh(db_shot)
+        else:
+             logger.info(f"分镜 ID {shot_id} 无需更新")
         
         # 获取更新后的完整对象（包含order）
         updated_shots = user_shot_service.get_ordered_shots(db)
         for shot in updated_shots:
             if shot.shot_id == shot_id:
-                logger.info(f"分镜 ID {shot_id} 内容更新成功")
+                logger.info(f"分镜 ID {shot_id} 更新处理完成")
                 return shot
         
-        logger.info(f"分镜 ID {shot_id} 内容更新成功")
+        # 如果上面循环没找到 (理论上不应该)，返回查询到的对象
+        logger.warning(f"更新分镜 ID {shot_id} 后在有序列表中未找到，返回原始查询对象")
         return db_shot
     except HTTPException:
         raise
@@ -161,7 +178,7 @@ def delete_shot(db: Session, shot_id: int):
         log_exception(logger, f"删除分镜 ID {shot_id} 并重新排序失败: {str(e)}")
         raise HTTPException(status_code=500, detail="删除分镜并重新排序失败")
 
-def insert_shot(db: Session, reference_shot_id: int, position: str, content: str):
+def insert_shot(db: Session, reference_shot_id: int, position: str, content: str, t2i_prompt: Optional[str] = None):
     """
     在指定位置插入新分镜
     
@@ -170,11 +187,12 @@ def insert_shot(db: Session, reference_shot_id: int, position: str, content: str
         reference_shot_id: 参考分镜ID
         position: 插入位置 ("above" 或 "below")
         content: 新分镜内容
+        t2i_prompt: 可选的提示词
         
     Returns:
         插入并重新排序后的分镜列表
     """
-    logger.info(f"请求在 ID {reference_shot_id} 的 {position} 插入分镜")
+    logger.info(f"请求在 ID {reference_shot_id} 的 {position} 插入分镜，内容: {content}, 提示词: {t2i_prompt}")
     try:
         db.begin()
 
@@ -187,7 +205,8 @@ def insert_shot(db: Session, reference_shot_id: int, position: str, content: str
 
         # 创建新分镜
         new_shot = models.Shot(
-            content=content
+            content=content,
+            t2i_prompt=t2i_prompt
         )
         db.add(new_shot)
         db.commit()
@@ -237,51 +256,46 @@ def delete_all_shots(db: Session):
         log_exception(logger, f"删除所有分镜失败: {str(e)}")
         raise HTTPException(status_code=500, detail="删除所有分镜失败")
 
-def bulk_replace_shots(db: Session, shots_content: list):
+def bulk_replace_shots(db: Session, shots_data: list):
     """
     批量替换所有分镜
     
     Args:
         db: 数据库会话
-        shots_content: 包含分镜内容的列表
+        shots_data: 包含分镜对象的列表 (例如来自 Pydantic 的 ShotBase)
         
     Returns:
         新创建的分镜列表
     """
-    logger.info(f"请求批量替换所有分镜，新列表包含 {len(shots_content)} 项")
+    logger.info(f"正在批量替换所有分镜，共 {len(shots_data)} 条")
     try:
-        db.begin()
+        # 1. 删除所有现有分镜和排序
+        delete_all_shots(db) # 复用删除所有分镜的逻辑
+        logger.info("旧分镜和排序已清除")
 
-        # 1. 删除所有现有分镜
-        deleted_count = db.query(models.Shot).delete()
-        logger.info(f"批量替换前，删除了 {deleted_count} 个旧分镜")
-
-        # 2. 根据请求列表创建新分镜
-        new_shots_orm = []
-        for content in shots_content:
+        # 2. 创建新分镜
+        new_shots_db = []
+        shot_order_mapping = {}
+        order_counter = 1
+        for shot_input in shots_data:
             new_shot = models.Shot(
-                content=content
+                content=shot_input.content,
+                t2i_prompt=getattr(shot_input, 't2i_prompt', None) # 安全地获取 t2i_prompt
             )
-            new_shots_orm.append(new_shot)
-
-        if new_shots_orm:
-            db.add_all(new_shots_orm)
-            logger.info(f"已准备添加 {len(new_shots_orm)} 个新分镜")
-        else:
-            logger.info("请求的新分镜列表为空，不添加任何新分镜")
-
-        db.commit()
+            db.add(new_shot)
+            db.flush() # 刷新以获取 new_shot.shot_id
+            new_shots_db.append(new_shot)
+            shot_order_mapping[str(new_shot.shot_id)] = order_counter
+            order_counter += 1
         
-        # 刷新以获取ID
-        for shot in new_shots_orm:
-            db.refresh(shot)
-            
-        # 3. 重建用户分镜顺序
-        user_shot_service.rebuild_shots_order(db, new_shots_orm)
+        # 3. 更新用户分镜排序
+        user_shot_service.set_shot_order(db, shot_order_mapping)
 
-        # 返回新创建的完整列表
+        db.commit() # 提交所有更改
+        
+        # 重新获取完整、排序后的列表返回给前端
         final_shots = user_shot_service.get_ordered_shots(db)
-        logger.info(f"批量替换完成，返回 {len(final_shots)} 个分镜")
+        logger.info(f"批量替换完成，创建了 {len(final_shots)} 个新分镜")
         return final_shots
     except Exception as e:
         db.rollback()

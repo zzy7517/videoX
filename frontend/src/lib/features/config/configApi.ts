@@ -5,6 +5,8 @@
  */
 export interface TextContent {
   content: string;
+  global_comfyui_payload?: Record<string, unknown>;
+  comfyui_url?: string;
 }
 
 // API 路径
@@ -20,20 +22,34 @@ export const loadTextContent = async (): Promise<TextContent> => {
     throw new Error(`加载文本失败：状态码 ${response.status}`);
   }
   const data = await response.json();
-  return { content: data.content || "" };
+  return { 
+    content: data.content || "", 
+    global_comfyui_payload: data.global_comfyui_payload || null,
+    comfyui_url: data.comfyui_url || ""
+  };
 };
 
 /**
  * 保存文本内容到服务器
  * @param content 要保存的文本内容
+ * @param global_comfyui_payload 自定义comfyui工作流
+ * @param comfyui_url ComfyUI的URL
  */
-export const saveTextContent = async (content: string): Promise<void> => {
+export const saveTextContent = async (
+  content: string, 
+  global_comfyui_payload?: Record<string, unknown>, 
+  comfyui_url?: string
+): Promise<void> => {
   const response = await fetch(API_TEXT_URL, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ content: content }),
+    body: JSON.stringify({ 
+      content: content,
+      global_comfyui_payload: global_comfyui_payload,
+      comfyui_url: comfyui_url
+    }),
   });
   
   if (!response.ok) {

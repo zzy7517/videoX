@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
+import { Textarea, ScrollableTextarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
@@ -12,9 +12,10 @@ import {
   DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 // 导入自定义 Hook（更新路径）
 import { useShotManager } from '@/lib/features/shot/useShotManager';
-import { useTextManager } from '@/lib/features/text/useTextManager';
+import { useTextManager } from '@/lib/features/config/useConfigManager';
 
 /**
  * 分镜编辑主页组件
@@ -44,6 +45,7 @@ export default function Home() {
   // === 使用自定义 Hook 管理文本相关状态和操作 ===
   const {
     inputText,
+    comfyuiConfig,
     isLoading,
     isSaving,
     isClearing,
@@ -54,7 +56,10 @@ export default function Home() {
     saveTextContent,
     clearTextContent,
     handleTextChange,
-    resetTextState
+    updateComfyuiConfig,
+    resetTextState,
+    comfyuiUrl,
+    updateComfyuiUrl
   } = useTextManager();
 
   // === UI 状态 ===
@@ -65,8 +70,18 @@ export default function Home() {
    */
   const splitByLines = async () => {
     try {
+      // 首先保存设置
+      await saveTextContent(); 
+      // 检查保存过程中是否出现错误，如果textError被设置，则不继续执行导出
+      if (textError) {
+        console.error("保存设置失败，取消导出分镜:", textError);
+        // 可以选择在这里显示一个更明确的错误消息给用户
+        return; 
+      }
+      
+      // 然后执行导出
       await replaceShotsFromText(inputText);
-      resetTextState(); // 清空文本状态
+      resetTextState(); // 清空文本状态 (如果保存和导出都成功)
       setDialogOpen(false); // 关闭对话框
     } catch (error) {
       console.error("导入分镜失败:", error);
@@ -107,63 +122,101 @@ export default function Home() {
             <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
               <DialogTrigger asChild>
                 <Button variant="outline" className="hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                  导入文本
+                  设置
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[600px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg">
+              <DialogContent className="sm:max-w-[800px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg">
                 <DialogHeader>
-                  <DialogTitle className="text-xl font-semibold">文本导入</DialogTitle>
+                  <DialogTitle className="text-xl font-semibold">设置</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <Textarea
-                    value={inputText}
-                    onChange={(e) => handleTextChange(e.target.value)}
-                    placeholder="在此粘贴或输入文本，每行将成为一个分镜..."
-                    className="min-h-[200px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-                    disabled={isBulkUpdating || isLoading || isSaving || isClearing} 
-                  />
-                  {textError && (
-                    <p className="text-red-500 text-sm">{textError}</p>
-                  )}
-                  {textMessage && (
-                    <p className="text-green-500 text-sm">{textMessage}</p>
-                  )}
-                </div>
+                <Tabs defaultValue="text-input" className="flex">
+                  <TabsList className="flex-shrink-0 flex flex-col h-auto mr-4 border-r pr-2">
+                    <TabsTrigger value="text-input" className="justify-start mb-2">剧本</TabsTrigger>
+                    <TabsTrigger value="comfyui-config" className="justify-start">comfyui设置</TabsTrigger>
+                  </TabsList>
+
+                  <div className="flex-grow">
+                    <TabsContent value="text-input" className="space-y-4 py-4 mt-0">
+                      <ScrollableTextarea
+                        value={inputText}
+                        onChange={(e) => handleTextChange(e.target.value)}
+                        placeholder="在此粘贴或输入文本，每行将成为一个分镜..."
+                        className="min-h-[200px] max-h-[400px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                        disabled={isBulkUpdating || isLoading || isSaving || isClearing} 
+                      />
+                      {textError && (
+                        <p className="text-red-500 text-sm">{textError}</p>
+                      )}
+                      {textMessage && (
+                        <p className="text-green-500 text-sm">{textMessage}</p>
+                      )}
+                      <div className="flex justify-between mt-4">
+                          <Button
+                              variant="outline"
+                              onClick={clearTextContent}
+                              disabled={isClearing || isBulkUpdating || isLoading || isSaving}
+                              className="hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 transition-colors"
+                          >
+                              {isClearing ? "清除中..." : "清除剧本"}
+                          </Button>
+                          <Button
+                              onClick={splitByLines}
+                              disabled={isBulkUpdating || !inputText.trim() || isLoading || isSaving || isClearing} 
+                              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-90 transition-opacity"
+                          >
+                              {isBulkUpdating ? "导出中..." : "剧本导出为分镜(覆盖)"}
+                          </Button>
+                      </div>
+                    </TabsContent>
+
+                    <TabsContent value="comfyui-config" className="space-y-4 py-4 mt-0">
+                      {/* ComfyUI URL输入框 */}
+                      <div className="space-y-2">
+                        <label htmlFor="comfyui-url" className="block text-sm font-medium">
+                          ComfyUI URL
+                        </label>
+                        <input
+                          id="comfyui-url"
+                          type="text"
+                          value={comfyuiUrl}
+                          onChange={(e) => updateComfyuiUrl(e.target.value)}
+                          placeholder="输入ComfyUI服务URL..."
+                          className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                          disabled={isBulkUpdating || isLoading || isSaving || isClearing}
+                        />
+                      </div>
+                      <ScrollableTextarea
+                        value={comfyuiConfig ? JSON.stringify(comfyuiConfig, null, 2) : ""}
+                        onChange={(e) => {
+                          try {
+                            const parsed = e.target.value ? JSON.parse(e.target.value) : null;
+                            updateComfyuiConfig(parsed);
+                          } catch {
+                            // 允许用户输入无效JSON，但不更新状态
+                            console.log("无效的JSON格式");
+                          }
+                        }}
+                        placeholder="在此粘贴JSON格式的ComfyUI配置..."
+                        className="min-h-[200px] max-h-[400px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-mono text-sm"
+                        disabled={isBulkUpdating || isLoading || isSaving || isClearing} 
+                      />
+                      {textError && (
+                        <p className="text-red-500 text-sm">{textError}</p>
+                      )}
+                      {textMessage && (
+                        <p className="text-green-500 text-sm">{textMessage}</p>
+                      )}
+                    </TabsContent>
+                  </div>
+                </Tabs>
                 <DialogFooter className="flex flex-wrap gap-3 justify-between">
-                    {/* 左侧按钮组 */}
-                    <div className="flex gap-3">
-                        <Button
-                            variant="outline"
-                            onClick={loadTextContent}
-                            disabled={isLoading || isBulkUpdating || isSaving || isClearing}
-                            className="hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                            {isLoading ? "加载中..." : "加载原文"}
-                        </Button>
-                        <Button
-                            variant="outline"
-                            onClick={saveTextContent}
-                            disabled={isSaving || isBulkUpdating || isLoading || isClearing}
-                            className="hover:bg-slate-100 dark:hover:bg-slate-700"
-                        >
-                            {isSaving ? "保存中..." : "保存原文"}
-                        </Button>
-                        <Button
-                            variant="outline"
-                            onClick={clearTextContent}
-                            disabled={isClearing || isBulkUpdating || isLoading || isSaving}
-                            className="hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 transition-colors"
-                        >
-                            {isClearing ? "清除中..." : "清除原文"}
-                        </Button>
-                    </div>
-                    {/* 右侧主要操作按钮 */}
                     <Button
-                        onClick={splitByLines}
-                        disabled={isBulkUpdating || !inputText.trim() || isLoading || isSaving || isClearing} 
-                        className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-90 transition-opacity"
+                        variant="outline"
+                        onClick={saveTextContent}
+                        disabled={isSaving || isBulkUpdating || isLoading || isClearing}
+                        className="hover:bg-slate-100 dark:hover:bg-slate-700"
                     >
-                        {isBulkUpdating ? "导入中..." : "导入为分镜(覆盖)"}
+                        {isSaving ? "保存中..." : "保存设置"}
                     </Button>
                 </DialogFooter>
               </DialogContent>
@@ -257,13 +310,22 @@ export default function Home() {
                 <CardContent>
                   <Textarea
                     value={shot.content}
-                    onChange={(e) => updateShotLocal(shot.shot_id, e.target.value)} 
-                    onBlur={(e) => handleShotBlur(shot.shot_id, e.target.value)} 
+                    onChange={(e) => updateShotLocal(shot.shot_id, { content: e.target.value })}
+                    onBlur={(e) => handleShotBlur(shot.shot_id, { content: e.target.value })}
                     placeholder={`请输入分镜 ${shot.order} 的内容...`}
-                    className="min-h-[120px] bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-purple-500/20 transition-all"
-                    disabled={isInsertingShot !== null || isDeletingShot !== null || isBulkUpdating} 
+                    className="min-h-[120px] bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-purple-500/20 transition-all mb-3"
+                    disabled={isInsertingShot !== null || isDeletingShot !== null || isBulkUpdating}
                   />
-                  {/* 保存状态提示 */} 
+                  {/* 新增：提示词文本框 */}
+                  <Textarea
+                    value={shot.t2i_prompt || ""}
+                    onChange={(e) => updateShotLocal(shot.shot_id, { t2i_prompt: e.target.value })}
+                    onBlur={(e) => handleShotBlur(shot.shot_id, { t2i_prompt: e.target.value })}
+                    placeholder={`请输入分镜 ${shot.order} 的提示词...`}
+                    className="min-h-[80px] bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-purple-500/20 transition-all text-sm"
+                    disabled={isInsertingShot !== null || isDeletingShot !== null || isBulkUpdating}
+                  />
+                  {/* 保存状态提示 */}
                   {shotMessage?.id === shot.shot_id && (
                     <p className={`mt-2 text-xs ${shotMessage.type === 'error' ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
                       {shotMessage.message}

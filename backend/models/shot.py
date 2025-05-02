@@ -11,6 +11,7 @@ class Shot(Base):
     content = Column(String, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    t2i_prompt = Column(String, nullable=True)
 
     class Config:
         orm_mode = True

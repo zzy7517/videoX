@@ -7,6 +7,7 @@ export interface Shot {
   shot_id: number;  // 数据库主键 ID
   order: number;   // 由后端维护的顺序
   content: string;
+  t2i_prompt?: string; // 重命名 prompt 为 t2i_prompt
 }
 
 // 注意：确保 API 路径与后端路由配置一致
@@ -69,15 +70,30 @@ export const addShot = async (): Promise<Shot[]> => {
 /**
  * 保存单个分镜内容到后端
  * @param shot_id 分镜的数据库 ID
- * @param content 要保存的内容
+ * @param shotData 包含要更新字段的对象 (例如 { content: '...', t2iprompt: '...' })
  */
-export const saveShot = async (shot_id: number, content: string): Promise<void> => {
+export const saveShot = async (shot_id: number, shotData: Partial<Pick<Shot, 'content' | 't2i_prompt'>>): Promise<void> => {
+  // 过滤掉值为 undefined 或 null 的字段，避免发送不必要的更新
+  const updatePayload: Partial<Pick<Shot, 'content' | 't2i_prompt'>> = {};
+  if (shotData.content !== undefined && shotData.content !== null) {
+    updatePayload.content = shotData.content;
+  }
+  if (shotData.t2i_prompt !== undefined && shotData.t2i_prompt !== null) {
+    updatePayload.t2i_prompt = shotData.t2i_prompt;
+  }
+
+  // 如果没有有效字段需要更新，则不发送请求
+  if (Object.keys(updatePayload).length === 0) {
+    console.log(`没有有效字段需要为分镜 ${shot_id} 保存。`);
+    return;
+  }
+
   const response = await fetch(`${API_BASE_URL}/shots/${shot_id}`, { // 使用 ID 更新
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ content: content }), // 只发送 content
+    body: JSON.stringify(updatePayload), // 发送包含更新字段的对象
   })
 
   if (!response.ok) {
