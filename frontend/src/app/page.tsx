@@ -48,18 +48,22 @@ export default function Home() {
     comfyuiConfig,
     isLoading,
     isSaving,
-    isClearing,
     error: textError,
     message: textMessage,
     
     loadTextContent,
     saveTextContent,
-    clearTextContent,
     handleTextChange,
     updateComfyuiConfig,
     resetTextState,
     comfyuiUrl,
-    updateComfyuiUrl
+    updateComfyuiUrl,
+    openaiUrl,
+    updateOpenaiUrl,
+    openaiApiKey,
+    updateOpenaiApiKey,
+    model,
+    updateModel
   } = useTextManager();
 
   // === UI 状态 ===
@@ -132,7 +136,8 @@ export default function Home() {
                 <Tabs defaultValue="text-input" className="flex">
                   <TabsList className="flex-shrink-0 flex flex-col h-auto mr-4 border-r pr-2">
                     <TabsTrigger value="text-input" className="justify-start mb-2">剧本</TabsTrigger>
-                    <TabsTrigger value="comfyui-config" className="justify-start">comfyui设置</TabsTrigger>
+                    <TabsTrigger value="comfyui-config" className="justify-start mb-2">comfyui设置</TabsTrigger>
+                    <TabsTrigger value="llm-config" className="justify-start">LLM设置</TabsTrigger>
                   </TabsList>
 
                   <div className="flex-grow">
@@ -142,7 +147,7 @@ export default function Home() {
                         onChange={(e) => handleTextChange(e.target.value)}
                         placeholder="在此粘贴或输入文本，每行将成为一个分镜..."
                         className="min-h-[200px] max-h-[400px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-                        disabled={isBulkUpdating || isLoading || isSaving || isClearing} 
+                        disabled={isBulkUpdating || isLoading || isSaving} 
                       />
                       {textError && (
                         <p className="text-red-500 text-sm">{textError}</p>
@@ -150,18 +155,10 @@ export default function Home() {
                       {textMessage && (
                         <p className="text-green-500 text-sm">{textMessage}</p>
                       )}
-                      <div className="flex justify-between mt-4">
-                          <Button
-                              variant="outline"
-                              onClick={clearTextContent}
-                              disabled={isClearing || isBulkUpdating || isLoading || isSaving}
-                              className="hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 transition-colors"
-                          >
-                              {isClearing ? "清除中..." : "清除剧本"}
-                          </Button>
+                      <div className="flex justify-end mt-4">
                           <Button
                               onClick={splitByLines}
-                              disabled={isBulkUpdating || !inputText.trim() || isLoading || isSaving || isClearing} 
+                              disabled={isBulkUpdating || !inputText.trim() || isLoading || isSaving} 
                               className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-90 transition-opacity"
                           >
                               {isBulkUpdating ? "导出中..." : "剧本导出为分镜(覆盖)"}
@@ -182,7 +179,7 @@ export default function Home() {
                           onChange={(e) => updateComfyuiUrl(e.target.value)}
                           placeholder="输入ComfyUI服务URL..."
                           className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                          disabled={isBulkUpdating || isLoading || isSaving || isClearing}
+                          disabled={isBulkUpdating || isLoading || isSaving}
                         />
                       </div>
                       <ScrollableTextarea
@@ -198,8 +195,63 @@ export default function Home() {
                         }}
                         placeholder="在此粘贴JSON格式的ComfyUI配置..."
                         className="min-h-[200px] max-h-[400px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-mono text-sm"
-                        disabled={isBulkUpdating || isLoading || isSaving || isClearing} 
+                        disabled={isBulkUpdating || isLoading || isSaving} 
                       />
+                      {textError && (
+                        <p className="text-red-500 text-sm">{textError}</p>
+                      )}
+                      {textMessage && (
+                        <p className="text-green-500 text-sm">{textMessage}</p>
+                      )}
+                    </TabsContent>
+
+                    {/* 新增 LLM 设置内容 */}
+                    <TabsContent value="llm-config" className="space-y-4 py-4 mt-0">
+                      {/* OpenAI URL 输入框 */}
+                      <div className="space-y-2">
+                        <label htmlFor="openai-url" className="block text-sm font-medium">
+                          OpenAI URL
+                        </label>
+                        <input
+                          id="openai-url"
+                          type="text"
+                          value={openaiUrl || ''}
+                          onChange={(e) => updateOpenaiUrl(e.target.value)}
+                          placeholder="输入 OpenAI 兼容的 URL (例如 https://api.openai.com/v1)"
+                          className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                          disabled={isBulkUpdating || isLoading || isSaving}
+                        />
+                      </div>
+                      {/* OpenAI API Key 输入框 */}
+                      <div className="space-y-2">
+                        <label htmlFor="openai-api-key" className="block text-sm font-medium">
+                          OpenAI API Key
+                        </label>
+                        <input
+                          id="openai-api-key"
+                          type="password"
+                          value={openaiApiKey || ''}
+                          onChange={(e) => updateOpenaiApiKey(e.target.value)}
+                          placeholder="输入 OpenAI API Key"
+                          className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                          disabled={isBulkUpdating || isLoading || isSaving}
+                        />
+                      </div>
+                      {/* LLM Model 输入框 */}
+                      <div className="space-y-2">
+                        <label htmlFor="llm-model" className="block text-sm font-medium">
+                          LLM Model (Optional)
+                        </label>
+                        <input
+                          id="llm-model"
+                          type="text"
+                          value={model || ''}
+                          onChange={(e) => updateModel(e.target.value)}
+                          placeholder="输入使用的 LLM 模型名称 (例如 gpt-4o)"
+                          className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                          disabled={isBulkUpdating || isLoading || isSaving}
+                        />
+                      </div>
                       {textError && (
                         <p className="text-red-500 text-sm">{textError}</p>
                       )}
@@ -213,7 +265,7 @@ export default function Home() {
                     <Button
                         variant="outline"
                         onClick={saveTextContent}
-                        disabled={isSaving || isBulkUpdating || isLoading || isClearing}
+                        disabled={isSaving || isBulkUpdating || isLoading}
                         className="hover:bg-slate-100 dark:hover:bg-slate-700"
                     >
                         {isSaving ? "保存中..." : "保存设置"}

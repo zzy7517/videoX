@@ -1,8 +1,7 @@
 import { useState, useCallback } from 'react';
 import {
   loadTextContent as apiLoadTextContent,
-  saveTextContent as apiSaveTextContent,
-  clearTextContent as apiClearTextContent
+  saveTextContent as apiSaveTextContent
 } from './configApi';
 
 /**
@@ -14,9 +13,11 @@ export const useTextManager = () => {
   const [inputText, setInputText] = useState("");
   const [comfyuiConfig, setComfyuiConfig] = useState<Record<string, unknown> | null>(null);
   const [comfyuiUrl, setComfyuiUrl] = useState("");
+  const [openaiUrl, setOpenaiUrl] = useState<string | null>(null);
+  const [openaiApiKey, setOpenaiApiKey] = useState<string | null>(null);
+  const [model, setModel] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isClearing, setIsClearing] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -42,11 +43,14 @@ export const useTextManager = () => {
     setError("");
     setMessage("");
     try {
-      const { content, global_comfyui_payload, comfyui_url } = await apiLoadTextContent();
+      const { content, global_comfyui_payload, comfyui_url, openai_url, openai_api_key, model } = await apiLoadTextContent();
       setInputText(content);
       setComfyuiConfig(global_comfyui_payload || null);
       setComfyuiUrl(comfyui_url || "");
-      return { content, global_comfyui_payload, comfyui_url };
+      setOpenaiUrl(openai_url || null);
+      setOpenaiApiKey(openai_api_key || null);
+      setModel(model || null);
+      return { content, global_comfyui_payload, comfyui_url, openai_url, openai_api_key, model };
     } catch (error) {
       console.error("加载文本内容失败:", error);
       const errorMsg = error instanceof Error ? error.message : "无法加载文本内容";
@@ -66,7 +70,14 @@ export const useTextManager = () => {
     setError("");
     setMessage("");
     try {
-      await apiSaveTextContent(inputText, comfyuiConfig || undefined, comfyuiUrl || undefined);
+      await apiSaveTextContent(
+        inputText,
+        comfyuiConfig || undefined,
+        comfyuiUrl || undefined,
+        openaiUrl || undefined,
+        openaiApiKey || undefined,
+        model || undefined
+      );
       setMessage("保存成功");
       clearMessage();
     } catch (error) {
@@ -78,7 +89,7 @@ export const useTextManager = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [inputText, comfyuiConfig, comfyuiUrl, clearMessage, clearError]);
+  }, [inputText, comfyuiConfig, comfyuiUrl, openaiUrl, openaiApiKey, model, clearMessage, clearError]);
 
   /**
    * 更新ComfyUI配置
@@ -95,6 +106,27 @@ export const useTextManager = () => {
   }, []);
 
   /**
+   * 更新 OpenAI URL
+   */
+  const updateOpenaiUrl = useCallback((url: string) => {
+    setOpenaiUrl(url);
+  }, []);
+
+  /**
+   * 更新 OpenAI API Key
+   */
+  const updateOpenaiApiKey = useCallback((key: string) => {
+    setOpenaiApiKey(key);
+  }, []);
+
+  /**
+   * 更新 LLM 模型名称
+   */
+  const updateModel = useCallback((modelName: string) => {
+    setModel(modelName);
+  }, []);
+
+  /**
    * 保存ComfyUI配置到服务器（保留当前文本内容）
    */
   const saveComfyuiConfig = useCallback(async (config: Record<string, unknown> | null) => {
@@ -102,7 +134,14 @@ export const useTextManager = () => {
     setError("");
     setMessage("");
     try {
-      await apiSaveTextContent(inputText, config || undefined, comfyuiUrl || undefined);
+      await apiSaveTextContent(
+        inputText,
+        config || undefined,
+        comfyuiUrl || undefined,
+        openaiUrl || undefined,
+        openaiApiKey || undefined,
+        model || undefined
+      );
       setComfyuiConfig(config);
       setMessage("配置保存成功");
       clearMessage();
@@ -115,34 +154,7 @@ export const useTextManager = () => {
     } finally {
       setIsSaving(false);
     }
-  }, [inputText, comfyuiUrl, clearMessage, clearError]);
-
-  /**
-   * 清空文本内容，不清空comfyui配置
-   */
-  const clearTextContent = useCallback(async () => {
-    if (!confirm("确定要清空全文内容吗？此操作不可撤销。")) {
-      return;
-    }
-    
-    setIsClearing(true);
-    setError("");
-    setMessage("");
-    try {
-      await apiClearTextContent();
-      setInputText("");
-      setMessage("内容已清空");
-      clearMessage();
-    } catch (error) {
-      console.error("清空文本内容失败:", error);
-      const errorMsg = error instanceof Error ? error.message : "无法清空文本内容";
-      setError(errorMsg);
-      clearError();
-      throw error;
-    } finally {
-      setIsClearing(false);
-    }
-  }, [clearMessage, clearError]);
+  }, [inputText, comfyuiUrl, openaiUrl, openaiApiKey, model, clearMessage, clearError]);
 
   /**
    * 更新输入文本内容
@@ -165,21 +177,25 @@ export const useTextManager = () => {
     inputText,
     comfyuiConfig,
     comfyuiUrl,
+    openaiUrl,
+    openaiApiKey,
+    model,
     isLoading,
     isSaving,
-    isClearing,
     error,
     message,
     
     // 操作方法
     loadTextContent,
     saveTextContent,
-    clearTextContent,
     handleTextChange,
     updateComfyuiConfig,
     updateComfyuiUrl,
     saveComfyuiConfig,
     resetTextState,
+    updateOpenaiUrl,
+    updateOpenaiApiKey,
+    updateModel,
     
     // 辅助方法
     setError,

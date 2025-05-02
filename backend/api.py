@@ -68,6 +68,9 @@ class TextContentBase(BaseModel):
     content: Optional[str] = None
     global_comfyui_payload: Optional[dict] = None
     comfyui_url: Optional[str] = None
+    openai_url: Optional[str] = None  # 新增 OpenAI URL
+    openai_api_key: Optional[str] = None # 新增 OpenAI API Key
+    model: Optional[str] = None # 新增: LLM 模型名称
 
 class ConfigResponse(TextContentBase):
     id: int
@@ -157,13 +160,15 @@ def get_user_config(db: Session = Depends(database.get_db)):
 @main_router.put("/text/", response_model=ConfigResponse)
 def update_user_config(text: TextContentBase, db: Session = Depends(database.get_db)):
     """更新文本内容 (单条记录)"""
-    return user_config_service.update_user_config(db, text.content, text.global_comfyui_payload, text.comfyui_url)
-
-@main_router.delete("/text/", status_code=204)
-def clear_text_content(db: Session = Depends(database.get_db)):
-    """清空文本内容 (将内容设置为空字符串)"""
-    user_config_service.clear_text_content(db)
-    return # 返回 204 No Content
+    return user_config_service.update_user_config(
+        db,
+        text.content,
+        text.global_comfyui_payload,
+        text.comfyui_url,
+        text.openai_url,  # 传递 OpenAI URL
+        text.openai_api_key, # 传递 OpenAI API Key
+        text.model # 新增: 传递 LLM 模型名称
+    )
 
 # 注册主路由
 app.include_router(main_router)

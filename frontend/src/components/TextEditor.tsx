@@ -63,25 +63,6 @@ const TextEditor: React.FC<TextEditorProps> = ({ onTextChange }) => {
         }
     };
 
-    // 清空文本内容
-    const clearContent = async () => {
-        setError('');
-        try {
-            const response = await fetch(`${API_BASE_URL}/text/`, {
-                method: 'DELETE',
-            });
-            if (response.ok) {
-                setContent('');
-                onTextChange?.('');
-            } else {
-                throw new Error('清空失败');
-            }
-        } catch (error) {
-            console.error('清空文本内容失败:', error);
-            setError('清空失败，请重试');
-        }
-    };
-
     // 处理文本变化
     const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newContent = e.target.value;
@@ -125,12 +106,6 @@ const TextEditor: React.FC<TextEditorProps> = ({ onTextChange }) => {
                         <div className="text-red-500 text-sm">{error}</div>
                     )}
                     <div className="flex gap-2 justify-end">
-                        <Button
-                            variant="outline"
-                            onClick={clearContent}
-                        >
-                            清空
-                        </Button>
                         <Button
                             onClick={saveContent}
                             disabled={saving}

@@ -13,6 +13,9 @@ class UserConfig(Base):
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     global_comfyui_payload = Column(JSON, nullable=True)  # 存储ComfyUI自定义工作流
     comfyui_url = Column(String, nullable=True)  # 存储ComfyUI URL
+    openai_url = Column(String, nullable=True)  # 存储OpenAI URL
+    openai_api_key = Column(String, nullable=True)  # 存储OpenAI API Key
+    model = Column(String, nullable=True)  # 新增：存储 LLM 模型名称
 
     class Config:
         orm_mode = True
