@@ -58,6 +58,12 @@ def create_shot(db: Session, content: str, t2i_prompt: Optional[str] = None, use
         
         # 添加到用户分镜顺序的末尾
         try:
+            # 确保用户ID不为空
+            if user_id is None:
+                logger.warning("创建分镜时未指定用户ID，将无法正确添加到用户顺序中")
+                db_shot.order = 1
+                return db_shot
+                
             user_shot_service.add_shot_to_order(db, db_shot.shot_id, position="end", user_id=user_id)
             
             # 获取更新后的完整对象（包含order）

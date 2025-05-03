@@ -41,11 +41,11 @@ def get_user_shots_order(db: Session, user_id:int):
 
 def get_ordered_shots(db: Session, user_id: int):
     """
-    获取按顺序排列的所有分镜
+    获取按顺序排列的用户分镜
     
     Args:
         db: 数据库会话
-        user_id: 用户ID，默认为1
+        user_id: 用户ID
         
     Returns:
         按顺序排列的分镜列表
@@ -53,24 +53,28 @@ def get_ordered_shots(db: Session, user_id: int):
     logger.info(f"正在获取用户 {user_id} 的所有分镜 (按顺序)")
     
     try:
-        # 获取所有分镜
-        all_shots = db.query(models.Shot).all()
-        logger.info(f"成功获取 {len(all_shots)} 个分镜")
-        
-        ordered_shots = []
-        if len(all_shots) == 0:
-            return ordered_shots
-        
         # 获取用户分镜顺序
         user_shot = get_user_shots_order(db, user_id)
         shots_order = user_shot.shots_order
         
-        # 如果顺序为空或不是最新的（有新增分镜未在顺序中），重建顺序
-        if not shots_order or len(shots_order) != len(all_shots):
-            logger.info("分镜顺序不存在或不是最新的，将重建顺序")
+        # 如果顺序为空，直接返回空列表
+        if not shots_order:
+            logger.info(f"用户 {user_id} 没有分镜顺序记录，返回空列表")
+            return []
+        
+        # 获取顺序中指定的分镜ID列表
+        shot_ids = [int(shot_id) for shot_id in shots_order.keys()]
+        
+        # 根据ID列表查询分镜
+        all_shots = db.query(models.Shot).filter(models.Shot.shot_id.in_(shot_ids)).all()
+        logger.info(f"成功获取 {len(all_shots)} 个分镜")
+        
+        # 如果查询到的分镜数量与顺序不一致，说明有分镜被删除但顺序未更新，需要重建顺序
+        if len(all_shots) != len(shots_order):
+            logger.info("分镜数量与顺序不一致，将重建顺序")
             shots_order = rebuild_shots_order(db, all_shots, user_id)
         
-        # 根据顺序排列分镜
+        # 创建ID到分镜对象的映射字典
         shot_dict = {str(shot.shot_id): shot for shot in all_shots}
         ordered_shots = []
         
@@ -81,6 +85,16 @@ def get_ordered_shots(db: Session, user_id: int):
                 # 动态添加order属性
                 shot.order = order
                 ordered_shots.append(shot)
+            else:
+                # 移除不存在的分镜ID
+                logger.warning(f"分镜ID {shot_id_str} 在顺序中存在但在数据库中不存在，将从顺序中移除")
+                shots_order.pop(shot_id_str, None)
+        
+        # 如果有分镜被移除，更新数据库中的顺序
+        if len(ordered_shots) != len(shots_order):
+            user_shot = get_user_shots_order(db, user_id)
+            user_shot.shots_order = {str(shot.shot_id): shot.order for shot in ordered_shots}
+            db.commit()
         
         logger.info(f"成功获取 {len(ordered_shots)} 个已排序分镜")
         return ordered_shots
@@ -98,8 +112,8 @@ def rebuild_shots_order(db: Session, shots, user_id:int):
     
     Args:
         db: 数据库会话
-        shots: 分镜列表
-        user_id: 用户ID，默认为1
+        shots: 分镜列表（应该只包含当前用户的分镜）
+        user_id: 用户ID
         
     Returns:
         更新后的顺序字典
