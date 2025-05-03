@@ -10,19 +10,20 @@ import json
 # 设置日志
 logger = setup_logger("backend.services.text_content_service")
 
-def get_user_config(db: Session):
+def get_user_config(db: Session, user_id: int = None):
     """
     获取文本内容
     
     Args:
         db: 数据库会话
+        user_id: 用户ID，如果提供则获取特定用户的配置
         
     Returns:
         文本内容对象，包含所有配置字段
     """
-    logger.info("正在获取用户配置")
+    logger.info(f"正在获取用户 {user_id if user_id else '默认'} 的配置")
     try:
-        config = models.UserConfig.get_or_create(db)
+        config = models.UserConfig.get_or_create(db, user_id)
         logger.info("成功获取用户配置")
         # 确保返回所有字段，包括新的 LLM 字段
         return config 
@@ -35,7 +36,8 @@ def update_user_config(db: Session, content_text: str = None,
                        comfyui_url: str = None,
                        openai_url: str = None,  # 新增 OpenAI URL 参数
                        openai_api_key: str = None, # 新增 OpenAI API Key 参数
-                       model: str = None # 新增: LLM 模型名称参数
+                       model: str = None, # 新增: LLM 模型名称参数
+                       user_id: int = None # 新增: 用户ID参数
                        ):
     """
     更新用户配置
@@ -48,13 +50,14 @@ def update_user_config(db: Session, content_text: str = None,
         openai_url: OpenAI URL (可选)
         openai_api_key: OpenAI API Key (可选)
         model: LLM 模型名称 (可选)
+        user_id: 用户ID，如果提供则更新特定用户的配置
         
     Returns:
         更新后的用户配置对象
     """
-    logger.info("正在更新用户配置")
+    logger.info(f"正在更新用户 {user_id if user_id else '默认'} 的配置")
     try:
-        config = models.UserConfig.get_or_create(db)
+        config = models.UserConfig.get_or_create(db, user_id)
         
         # 更新各个字段（如果提供了值）
         if content_text is not None:
@@ -109,16 +112,17 @@ def update_user_config(db: Session, content_text: str = None,
         log_exception(logger, f"更新用户配置失败: {str(e)}")
         raise HTTPException(status_code=500, detail="更新用户配置失败")
 
-def clear_text_content(db: Session):
+def clear_text_content(db: Session, user_id: int = None):
     """
     只清空文本内容
     
     Args:
         db: 数据库会话
+        user_id: 用户ID，如果提供则清空特定用户的内容
     """
-    logger.info("正在清空文本内容")
+    logger.info(f"正在清空用户 {user_id if user_id else '默认'} 的文本内容")
     try:
-        content = models.UserConfig.get_or_create(db)
+        content = models.UserConfig.get_or_create(db, user_id)
         content.content = ""  # 设置为空字符串而不是 None，避免潜在问题
         # updated_at 会自动更新 (假设模型中配置了 onupdate)
         db.commit()
@@ -128,4 +132,4 @@ def clear_text_content(db: Session):
         log_exception(logger, f"清空文本内容失败: {str(e)}")
         raise HTTPException(status_code=500, detail="清空文本内容失败")
 
-    return user_config 
+    return content 

@@ -1,7 +1,7 @@
 import time
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from .logger import setup_logger
+from ..logger import setup_logger
 
 logger = setup_logger("middleware")
 
@@ -23,6 +23,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             f"方法: {request.method} | "
             f"客户端: {client_host} | "
             f"请求ID: {request_id}"
+            f"call_next: {call_next}"
         )
         
         # 调用下一个中间件或路由处理函数

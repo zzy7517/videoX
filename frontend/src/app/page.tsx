@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea, ScrollableTextarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,15 +14,50 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-// 导入自定义 Hook（更新路径）
+// 导入自定义 Hook
 import { useShotManager } from '@/lib/features/shot/useShotManager';
 import { useTextManager } from '@/lib/features/config/useConfigManager';
+// 导入认证相关组件
+import { useAuth, ProtectedRoute } from '@/lib/features/auth';
+import { Navbar } from '@/lib/features/auth/Navbar';
 
 /**
  * 分镜编辑主页组件
  * 提供分镜的创建、编辑、删除、插入和文本导入功能
  */
 export default function Home() {
+  const router = useRouter();
+  const { isAuthenticated, isLoading } = useAuth();
+  
+  // 如果未登录且不在加载中，重定向到登录页
+  useEffect(() => {
+    if (!isAuthenticated && !isLoading) {
+      router.push('/login');
+    }
+  }, [isAuthenticated, isLoading, router]);
+
+  // 如果正在加载认证状态，显示加载中
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-300">加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 使用ProtectedRoute包装内容，确保只有登录用户才能访问
+  return (
+    <ProtectedRoute>
+      <MainContent />
+    </ProtectedRoute>
+  );
+}
+
+// 分离出主要内容组件
+function MainContent() {
   // === 使用自定义 Hook 管理分镜相关状态和操作 ===
   const {
     shots,
@@ -115,176 +151,178 @@ export default function Home() {
 
   // === UI 渲染 ===
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6 md:p-10">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* 顶部操作栏 */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 backdrop-blur-sm bg-white/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-            分镜编辑器
-          </h1>
-          <div className="flex flex-wrap gap-3">
-            <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                  设置
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[800px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg">
-                <DialogHeader>
-                  <DialogTitle className="text-xl font-semibold">设置</DialogTitle>
-                </DialogHeader>
-                <Tabs defaultValue="text-input" className="flex">
-                  <TabsList className="flex-shrink-0 flex flex-col h-auto mr-4 border-r pr-2">
-                    <TabsTrigger value="text-input" className="justify-start mb-2">剧本</TabsTrigger>
-                    <TabsTrigger value="comfyui-config" className="justify-start mb-2">comfyui设置</TabsTrigger>
-                    <TabsTrigger value="llm-config" className="justify-start">LLM设置</TabsTrigger>
-                  </TabsList>
+    <>
+      <Navbar title="VideoX" />
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-6 md:p-10">
+        <div className="max-w-7xl mx-auto space-y-8">
+          {/* 顶部操作栏 */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 backdrop-blur-sm bg-white/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+              分镜编辑器
+            </h1>
+            <div className="flex flex-wrap gap-3">
+              <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                    设置
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[800px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg">
+                  <DialogHeader>
+                    <DialogTitle className="text-xl font-semibold">设置</DialogTitle>
+                  </DialogHeader>
+                  <Tabs defaultValue="text-input" className="flex">
+                    <TabsList className="flex-shrink-0 flex flex-col h-auto mr-4 border-r pr-2">
+                      <TabsTrigger value="text-input" className="justify-start mb-2">剧本</TabsTrigger>
+                      <TabsTrigger value="comfyui-config" className="justify-start mb-2">comfyui设置</TabsTrigger>
+                      <TabsTrigger value="llm-config" className="justify-start">LLM设置</TabsTrigger>
+                    </TabsList>
 
-                  <div className="flex-grow">
-                    <TabsContent value="text-input" className="space-y-4 py-4 mt-0">
-                      <ScrollableTextarea
-                        value={inputText}
-                        onChange={(e) => handleTextChange(e.target.value)}
-                        placeholder="在此粘贴或输入文本，每行将成为一个分镜..."
-                        className="min-h-[200px] max-h-[400px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-                        disabled={isBulkUpdating || isLoading || isSaving} 
-                      />
-                      {textError && (
-                        <p className="text-red-500 text-sm">{textError}</p>
-                      )}
-                      {textMessage && (
-                        <p className="text-green-500 text-sm">{textMessage}</p>
-                      )}
-                      <div className="flex justify-end mt-4">
-                          <Button
-                              onClick={splitByLines}
-                              disabled={isBulkUpdating || !inputText.trim() || isLoading || isSaving} 
-                              className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-90 transition-opacity"
-                          >
-                              {isBulkUpdating ? "导出中..." : "剧本导出为分镜(覆盖)"}
-                          </Button>
-                      </div>
-                    </TabsContent>
+                    <div className="flex-grow">
+                      <TabsContent value="text-input" className="space-y-4 py-4 mt-0">
+                        <ScrollableTextarea
+                          value={inputText}
+                          onChange={(e) => handleTextChange(e.target.value)}
+                          placeholder="在此粘贴或输入文本，每行将成为一个分镜..."
+                          className="min-h-[200px] max-h-[400px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                          disabled={isBulkUpdating || isLoading || isSaving} 
+                        />
+                        {textError && (
+                          <p className="text-red-500 text-sm">{textError}</p>
+                        )}
+                        {textMessage && (
+                          <p className="text-green-500 text-sm">{textMessage}</p>
+                        )}
+                        <div className="flex justify-end mt-4">
+                            <Button
+                                onClick={splitByLines}
+                                disabled={isBulkUpdating || !inputText.trim() || isLoading || isSaving} 
+                                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-90 transition-opacity"
+                            >
+                                {isBulkUpdating ? "导出中..." : "剧本导出为分镜(覆盖)"}
+                            </Button>
+                        </div>
+                      </TabsContent>
 
-                    <TabsContent value="comfyui-config" className="space-y-4 py-4 mt-0">
-                      {/* ComfyUI URL输入框 */}
-                      <div className="space-y-2">
-                        <label htmlFor="comfyui-url" className="block text-sm font-medium">
-                          ComfyUI URL
-                        </label>
-                        <input
-                          id="comfyui-url"
-                          type="text"
-                          value={comfyuiUrl}
-                          onChange={(e) => updateComfyuiUrl(e.target.value)}
-                          placeholder="输入ComfyUI服务URL..."
-                          className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                          disabled={isBulkUpdating || isLoading || isSaving}
+                      <TabsContent value="comfyui-config" className="space-y-4 py-4 mt-0">
+                        {/* ComfyUI URL输入框 */}
+                        <div className="space-y-2">
+                          <label htmlFor="comfyui-url" className="block text-sm font-medium">
+                            ComfyUI URL
+                          </label>
+                          <input
+                            id="comfyui-url"
+                            type="text"
+                            value={comfyuiUrl}
+                            onChange={(e) => updateComfyuiUrl(e.target.value)}
+                            placeholder="输入ComfyUI服务URL..."
+                            className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                            disabled={isBulkUpdating || isLoading || isSaving}
+                          />
+                        </div>
+                        <ScrollableTextarea
+                          value={comfyuiConfig ? JSON.stringify(comfyuiConfig, null, 2) : ""}
+                          onChange={(e) => {
+                            try {
+                              const parsed = e.target.value ? JSON.parse(e.target.value) : null;
+                              updateComfyuiConfig(parsed);
+                            } catch {
+                              // 允许用户输入无效JSON，但不更新状态
+                              console.log("无效的JSON格式");
+                            }
+                          }}
+                          placeholder="在此粘贴JSON格式的ComfyUI配置..."
+                          className="min-h-[200px] max-h-[400px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-mono text-sm"
+                          disabled={isBulkUpdating || isLoading || isSaving} 
                         />
-                      </div>
-                      <ScrollableTextarea
-                        value={comfyuiConfig ? JSON.stringify(comfyuiConfig, null, 2) : ""}
-                        onChange={(e) => {
-                          try {
-                            const parsed = e.target.value ? JSON.parse(e.target.value) : null;
-                            updateComfyuiConfig(parsed);
-                          } catch {
-                            // 允许用户输入无效JSON，但不更新状态
-                            console.log("无效的JSON格式");
-                          }
-                        }}
-                        placeholder="在此粘贴JSON格式的ComfyUI配置..."
-                        className="min-h-[200px] max-h-[400px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-mono text-sm"
-                        disabled={isBulkUpdating || isLoading || isSaving} 
-                      />
-                      {textError && (
-                        <p className="text-red-500 text-sm">{textError}</p>
-                      )}
-                      {textMessage && (
-                        <p className="text-green-500 text-sm">{textMessage}</p>
-                      )}
-                    </TabsContent>
+                        {textError && (
+                          <p className="text-red-500 text-sm">{textError}</p>
+                        )}
+                        {textMessage && (
+                          <p className="text-green-500 text-sm">{textMessage}</p>
+                        )}
+                      </TabsContent>
 
-                    {/* 新增 LLM 设置内容 */}
-                    <TabsContent value="llm-config" className="space-y-4 py-4 mt-0">
-                      {/* OpenAI URL 输入框 */}
-                      <div className="space-y-2">
-                        <label htmlFor="openai-url" className="block text-sm font-medium">
-                          OpenAI URL
-                        </label>
-                        <input
-                          id="openai-url"
-                          type="text"
-                          value={openaiUrl || ''}
-                          onChange={(e) => updateOpenaiUrl(e.target.value)}
-                          placeholder="输入 OpenAI 兼容的 URL (例如 https://api.openai.com/v1)"
-                          className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                          disabled={isBulkUpdating || isLoading || isSaving}
-                        />
-                      </div>
-                      {/* OpenAI API Key 输入框 */}
-                      <div className="space-y-2">
-                        <label htmlFor="openai-api-key" className="block text-sm font-medium">
-                          OpenAI API Key
-                        </label>
-                        <input
-                          id="openai-api-key"
-                          type="password"
-                          value={openaiApiKey || ''}
-                          onChange={(e) => updateOpenaiApiKey(e.target.value)}
-                          placeholder="输入 OpenAI API Key"
-                          className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                          disabled={isBulkUpdating || isLoading || isSaving}
-                        />
-                      </div>
-                      {/* LLM Model 输入框 */}
-                      <div className="space-y-2">
-                        <label htmlFor="llm-model" className="block text-sm font-medium">
-                          LLM Model (Optional)
-                        </label>
-                        <input
-                          id="llm-model"
-                          type="text"
-                          value={model || ''}
-                          onChange={(e) => updateModel(e.target.value)}
-                          placeholder="输入使用的 LLM 模型名称 (例如 gpt-4o)"
-                          className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                          disabled={isBulkUpdating || isLoading || isSaving}
-                        />
-                      </div>
-                      {textError && (
-                        <p className="text-red-500 text-sm">{textError}</p>
-                      )}
-                      {textMessage && (
-                        <p className="text-green-500 text-sm">{textMessage}</p>
-                      )}
-                    </TabsContent>
-                  </div>
-                </Tabs>
-                <DialogFooter className="flex flex-wrap gap-3 justify-between">
-                    <Button
-                        variant="outline"
-                        onClick={saveTextContent}
-                        disabled={isSaving || isBulkUpdating || isLoading}
-                        className="hover:bg-slate-100 dark:hover:bg-slate-700"
-                    >
-                        {isSaving ? "保存中..." : "保存设置"}
-                    </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            <Button
-              variant="outline"
-              onClick={deleteAllShots}
-              disabled={isDeletingAllShots || !shots || shots.length === 0} 
-              className="hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 transition-colors"
-            >
-              {isDeletingAllShots ? "删除中..." : "清空所有分镜"}
-            </Button>
+                      {/* 新增 LLM 设置内容 */}
+                      <TabsContent value="llm-config" className="space-y-4 py-4 mt-0">
+                        {/* OpenAI URL 输入框 */}
+                        <div className="space-y-2">
+                          <label htmlFor="openai-url" className="block text-sm font-medium">
+                            OpenAI URL
+                          </label>
+                          <input
+                            id="openai-url"
+                            type="text"
+                            value={openaiUrl || ''}
+                            onChange={(e) => updateOpenaiUrl(e.target.value)}
+                            placeholder="输入 OpenAI 兼容的 URL (例如 https://api.openai.com/v1)"
+                            className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                            disabled={isBulkUpdating || isLoading || isSaving}
+                          />
+                        </div>
+                        {/* OpenAI API Key 输入框 */}
+                        <div className="space-y-2">
+                          <label htmlFor="openai-api-key" className="block text-sm font-medium">
+                            OpenAI API Key
+                          </label>
+                          <input
+                            id="openai-api-key"
+                            type="password"
+                            value={openaiApiKey || ''}
+                            onChange={(e) => updateOpenaiApiKey(e.target.value)}
+                            placeholder="输入 OpenAI API Key"
+                            className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                            disabled={isBulkUpdating || isLoading || isSaving}
+                          />
+                        </div>
+                        {/* LLM Model 输入框 */}
+                        <div className="space-y-2">
+                          <label htmlFor="llm-model" className="block text-sm font-medium">
+                            LLM Model (Optional)
+                          </label>
+                          <input
+                            id="llm-model"
+                            type="text"
+                            value={model || ''}
+                            onChange={(e) => updateModel(e.target.value)}
+                            placeholder="输入使用的 LLM 模型名称 (例如 gpt-4o)"
+                            className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                            disabled={isBulkUpdating || isLoading || isSaving}
+                          />
+                        </div>
+                        {textError && (
+                          <p className="text-red-500 text-sm">{textError}</p>
+                        )}
+                        {textMessage && (
+                          <p className="text-green-500 text-sm">{textMessage}</p>
+                        )}
+                      </TabsContent>
+                    </div>
+                  </Tabs>
+                  <DialogFooter className="flex flex-wrap gap-3 justify-between">
+                      <Button
+                          variant="outline"
+                          onClick={saveTextContent}
+                          disabled={isSaving || isBulkUpdating || isLoading}
+                          className="hover:bg-slate-100 dark:hover:bg-slate-700"
+                      >
+                          {isSaving ? "保存中..." : "保存设置"}
+                      </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+              <Button
+                variant="outline"
+                onClick={deleteAllShots}
+                disabled={isDeletingAllShots || !shots || shots.length === 0} 
+                className="hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 transition-colors"
+              >
+                {isDeletingAllShots ? "删除中..." : "清空所有分镜"}
+              </Button>
+            </div>
           </div>
-        </div>
 
-        {/* 分镜列表 */}
+          {/* 分镜列表 */}
         {isLoadingShots ? (
             <div className="text-center py-10 text-slate-500 dark:text-slate-400">加载分镜中...</div>
         ) : !shots || shots.length === 0 ? (
@@ -296,7 +334,7 @@ export default function Home() {
                 key={shot.shot_id}
                 className="group hover:shadow-xl transition-all duration-300 backdrop-blur-sm bg-white/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 relative"
               >
-                {/* Loading/Inserting Indicator */} 
+                {/* Loading/Inserting Indicator */}
                 {(isInsertingShot === shot.shot_id || isDeletingShot === shot.shot_id) && (
                     <div className="absolute inset-0 bg-slate-200/30 dark:bg-slate-700/30 flex items-center justify-center z-10 rounded-lg">
                         <svg className="animate-spin h-5 w-5 text-purple-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -306,14 +344,14 @@ export default function Home() {
                     </div>
                 )}
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 pr-4 pl-4">
-                  {/* 插入和标题区域 */} 
-                  <div className="flex items-center gap-1.5 flex-grow min-w-0"> 
-                    {/* 向上插入按钮 */} 
+                  {/* 插入和标题区域 */}
+                  <div className="flex items-center gap-1.5 flex-grow min-w-0">
+                    {/* 向上插入按钮 */}
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => insertShot(shot.shot_id, 'above')}
-                      disabled={isInsertingShot !== null || isDeletingShot !== null || isBulkUpdating} 
+                      disabled={isInsertingShot !== null || isDeletingShot !== null || isBulkUpdating}
                       className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600 hover:bg-purple-100/50 dark:hover:bg-purple-900/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                       title="在此分镜上方插入"
                     >
@@ -323,17 +361,17 @@ export default function Home() {
                         </svg>
                     </Button>
 
-                    {/* 标题 */} 
+                    {/* 标题 */}
                     <CardTitle className="text-lg font-semibold text-slate-700 dark:text-slate-200 truncate" title={`分镜 ${shot.order} (ID: ${shot.shot_id})`}>
-                      分镜 {shot.order} 
+                      分镜 {shot.order}
                     </CardTitle>
 
-                    {/* 向下插入按钮 */} 
+                    {/* 向下插入按钮 */}
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => insertShot(shot.shot_id, 'below')}
-                      disabled={isInsertingShot !== null || isDeletingShot !== null || isBulkUpdating} 
+                      disabled={isInsertingShot !== null || isDeletingShot !== null || isBulkUpdating}
                       className="h-7 w-7 p-0 text-slate-400 hover:text-purple-600 hover:bg-purple-100/50 dark:hover:bg-purple-900/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                       title="在此分镜下方插入"
                     >
@@ -343,7 +381,7 @@ export default function Home() {
                         </svg>
                     </Button>
                   </div>
-                  {/* 删除按钮 */} 
+                  {/* 删除按钮 */}
                   <Button
                     variant="ghost"
                     size="icon"
@@ -389,7 +427,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* 悬浮添加按钮 (添加至末尾) */} 
+        {/* 悬浮添加按钮 (添加至末尾) */}
         <Button
           onClick={addShot}
           disabled={isLoadingShots || isInsertingShot !== null || isDeletingShot !== null || isBulkUpdating} 
@@ -429,8 +467,9 @@ export default function Home() {
                 <span className="block sm:inline">{displayMessage}</span>
             </div>
         )}
-      </div>
-    </main>
-  )
+        </div>
+      </main>
+    </>
+  );
 }
 

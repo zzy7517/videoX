@@ -1,4 +1,5 @@
 // frontend/src/lib/features/text/textApi.ts
+import { fetchWithAuth } from '@/lib/utils';
 
 /**
  * 文本内容接口定义
@@ -13,14 +14,14 @@ export interface TextContent {
 }
 
 // API 路径
-const API_TEXT_URL = 'http://localhost:8000/text/';
+const API_TEXT_URL = '/api/text/';
 
 /**
  * 从服务器加载文本内容
  * @returns 文本内容
  */
 export const loadTextContent = async (): Promise<TextContent> => {
-  const response = await fetch(API_TEXT_URL);
+  const response = await fetchWithAuth(API_TEXT_URL);
   if (!response.ok) {
     throw new Error(`加载文本失败：状态码 ${response.status}`);
   }
@@ -52,11 +53,8 @@ export const saveTextContent = async (
   openai_api_key?: string,
   model?: string
 ): Promise<void> => {
-  const response = await fetch(API_TEXT_URL, {
+  const response = await fetchWithAuth(API_TEXT_URL, {
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({ 
       content: content,
       global_comfyui_payload: global_comfyui_payload,

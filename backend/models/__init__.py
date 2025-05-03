@@ -1,7 +1,6 @@
 """模型导入"""
 from .base import Base
 from .user import User
-from .user_content import UserContent
 from .shot import Shot
 from .user_shot import UserShot
 from .user_config import UserConfig
@@ -10,8 +9,7 @@ from .user_config import UserConfig
 __all__ = [
     'Base', 
     'User', 
-    'UserContent', 
-    'Shot', 
+    'Shot',
     'UserShot', 
     'UserConfig'
 ] 

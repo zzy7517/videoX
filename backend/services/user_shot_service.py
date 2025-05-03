@@ -10,7 +10,7 @@ import json
 # 设置日志
 logger = setup_logger("backend.services.user_shot_service")
 
-def get_user_shots_order(db: Session, user_id: int = 1):
+def get_user_shots_order(db: Session, user_id:int):
     """
     获取用户分镜顺序
     
@@ -39,7 +39,7 @@ def get_user_shots_order(db: Session, user_id: int = 1):
     
     return user_shot
 
-def get_ordered_shots(db: Session, user_id: int = 1):
+def get_ordered_shots(db: Session, user_id: int):
     """
     获取按顺序排列的所有分镜
     
@@ -92,7 +92,7 @@ def get_ordered_shots(db: Session, user_id: int = 1):
         return []
 
 
-def rebuild_shots_order(db: Session, shots, user_id: int = 1):
+def rebuild_shots_order(db: Session, shots, user_id:int):
     """
     重建用户分镜顺序，根据分镜的更新时间排序
     
@@ -130,7 +130,7 @@ def rebuild_shots_order(db: Session, shots, user_id: int = 1):
         log_exception(logger, f"重建分镜顺序失败: {str(e)}")
         raise HTTPException(status_code=500, detail="重建分镜顺序失败")
 
-def add_shot_to_order(db: Session, shot_id: int, position: str = "end", reference_shot_id: int = None, user_id: int = 1):
+def add_shot_to_order(db: Session, shot_id: int, position: str = "end", reference_shot_id: int = None, user_id:int=None):
     """
     将分镜添加到用户顺序中
     
@@ -204,7 +204,7 @@ def add_shot_to_order(db: Session, shot_id: int, position: str = "end", referenc
         log_exception(logger, f"添加分镜到顺序失败: {str(e)}")
         raise HTTPException(status_code=500, detail="添加分镜到顺序失败")
 
-def remove_shot_from_order(db: Session, shot_id: int, user_id: int = 1):
+def remove_shot_from_order(db: Session, shot_id: int, user_id: int):
     """
     从用户顺序中移除分镜
     
@@ -249,4 +249,34 @@ def remove_shot_from_order(db: Session, shot_id: int, user_id: int = 1):
     except Exception as e:
         db.rollback()
         log_exception(logger, f"从顺序中移除分镜失败: {str(e)}")
-        raise HTTPException(status_code=500, detail="从顺序中移除分镜失败") 
+        raise HTTPException(status_code=500, detail="从顺序中移除分镜失败")
+
+def set_shot_order(db: Session, shot_order_mapping: dict, user_id: int):
+    """
+    直接设置用户分镜顺序
+    
+    Args:
+        db: 数据库会话
+        shot_order_mapping: 分镜ID到顺序的映射字典，形如 {"1": 1, "2": 2, ...}
+        user_id: 用户ID
+        
+    Returns:
+        更新后的顺序字典
+    """
+    logger.info(f"正在为用户 {user_id} 设置分镜顺序，共 {len(shot_order_mapping)} 个分镜")
+    
+    try:
+        # 获取用户分镜顺序
+        user_shot = get_user_shots_order(db, user_id)
+        
+        # 直接设置新的顺序
+        user_shot.shots_order = shot_order_mapping
+        db.commit()
+        
+        logger.info(f"成功设置用户 {user_id} 的分镜顺序，共 {len(shot_order_mapping)} 个分镜")
+        return shot_order_mapping
+        
+    except Exception as e:
+        db.rollback()
+        log_exception(logger, f"设置分镜顺序失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="设置分镜顺序失败") 

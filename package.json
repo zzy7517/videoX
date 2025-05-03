@@ -1,0 +1,17 @@
+{
+  "name": "videox",
+  "version": "1.0.0",
+  "description": "VideoX - A video scripting and generation tool",
+  "main": "index.js",
+  "scripts": {
+    "start:backend": "python main.py",
+    "start:frontend": "cd frontend && npm run dev",
+    "dev": "concurrently \"npm run start:backend\" \"npm run start:frontend\"",
+    "test": "echo \"Error:m no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+} 

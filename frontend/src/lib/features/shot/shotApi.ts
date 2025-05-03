@@ -1,4 +1,5 @@
 // frontend/src/lib/features/shot/shotApi.ts
+import { fetchWithAuth } from '@/lib/utils';
 
 /**
  * Shot 接口定义，匹配后端 ShotResponse 模型
@@ -11,14 +12,15 @@ export interface Shot {
 }
 
 // 注意：确保 API 路径与后端路由配置一致
-const API_BASE_URL = 'http://localhost:8000';
+// 使用Next.js代理，而不是直接访问后端
+const API_BASE_URL = '/api';
 
 /**
  * 从服务器加载所有分镜
  */
 export const loadShots = async (): Promise<Shot[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/shots/`)
+    const response = await fetchWithAuth(`${API_BASE_URL}/shots/`)
     if (!response.ok) {
       throw new Error(`加载分镜失败：状态码 ${response.status}`)
     }
@@ -43,11 +45,8 @@ export const loadShots = async (): Promise<Shot[]> => {
 export const addShot = async (): Promise<Shot[]> => {
   try {
     // 调用后端 API 在末尾创建新分镜
-    const response = await fetch(`${API_BASE_URL}/shots/`, {
+    const response = await fetchWithAuth(`${API_BASE_URL}/shots/`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ content: "" }), // 只发送内容
     })
 
@@ -88,11 +87,8 @@ export const saveShot = async (shot_id: number, shotData: Partial<Pick<Shot, 'co
     return;
   }
 
-  const response = await fetch(`${API_BASE_URL}/shots/${shot_id}`, { // 使用 ID 更新
+  const response = await fetchWithAuth(`${API_BASE_URL}/shots/${shot_id}`, { // 使用 ID 更新
     method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify(updatePayload), // 发送包含更新字段的对象
   })
 
@@ -109,7 +105,7 @@ export const saveShot = async (shot_id: number, shotData: Partial<Pick<Shot, 'co
  * @returns 返回更新后的分镜列表
  */
 export const deleteShot = async (shot_id: number): Promise<Shot[]> => {
-  const response = await fetch(`${API_BASE_URL}/shots/${shot_id}`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/shots/${shot_id}`, {
     method: 'DELETE'
   })
 
@@ -129,11 +125,8 @@ export const deleteShot = async (shot_id: number): Promise<Shot[]> => {
  * @returns 返回更新后的分镜列表
  */
 export const insertShot = async (reference_shot_id: number, position: 'above' | 'below'): Promise<Shot[]> => {
-  const response = await fetch(`${API_BASE_URL}/shots/insert/`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/shots/insert`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
     body: JSON.stringify({
       reference_shot_id: reference_shot_id,
       position: position,
@@ -154,7 +147,7 @@ export const insertShot = async (reference_shot_id: number, position: 'above' | 
  * 删除所有分镜
  */
 export const deleteAllShots = async (): Promise<void> => {
-  const response = await fetch(`${API_BASE_URL}/shots/`, {
+  const response = await fetchWithAuth(`${API_BASE_URL}/shots/`, {
     method: 'DELETE'
   })
 
@@ -185,11 +178,8 @@ export const replaceShotsFromText = async (textContent: string): Promise<Shot[]>
     };
 
     // 调用后端批量替换 API
-    const response = await fetch(`${API_BASE_URL}/shots/`, { // PUT /shots/
+    const response = await fetchWithAuth(`${API_BASE_URL}/shots/`, { // PUT /shots/
         method: 'PUT',
-        headers: {
-            'Content-Type': 'application/json',
-        },
         body: JSON.stringify(bulkUpdateData),
     });
 

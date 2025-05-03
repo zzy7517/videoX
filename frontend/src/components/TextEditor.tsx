@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { fetchWithAuth } from '@/lib/utils';
 
 interface TextEditorProps {
     onTextChange?: (text: string) => void;
@@ -17,13 +18,13 @@ const TextEditor: React.FC<TextEditorProps> = ({ onTextChange }) => {
     const [saving, setSaving] = useState<boolean>(false);
     const [error, setError] = useState<string>('');
 
-    const API_BASE_URL = 'http://localhost:8000';  // 根据实际后端地址调整
+    const API_BASE_URL = '/api';  // 使用Next.js代理，而不是直接访问后端
 
     // 加载文本内容
     const loadContent = async () => {
         setError('');
         try {
-            const response = await fetch(`${API_BASE_URL}/text/`);
+            const response = await fetchWithAuth(`${API_BASE_URL}/text/`);
             if (response.ok) {
                 const data = await response.json();
                 const newContent = data.content || '';
@@ -45,11 +46,8 @@ const TextEditor: React.FC<TextEditorProps> = ({ onTextChange }) => {
         setSaving(true);
         setError('');
         try {
-            const response = await fetch(`${API_BASE_URL}/text/`, {
+            const response = await fetchWithAuth(`${API_BASE_URL}/text/`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
                 body: JSON.stringify({ content }),
             });
             if (!response.ok) {
