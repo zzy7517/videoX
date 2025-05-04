@@ -34,10 +34,11 @@ def get_user_config(db: Session, user_id: int = None):
 def update_user_config(db: Session, content_text: str = None, 
                        global_comfyui_payload: dict = None, 
                        comfyui_url: str = None,
-                       openai_url: str = None,  # 新增 OpenAI URL 参数
-                       openai_api_key: str = None, # 新增 OpenAI API Key 参数
-                       model: str = None, # 新增: LLM 模型名称参数
-                       user_id: int = None # 新增: 用户ID参数
+                       openai_url: str = None, 
+                       openai_api_key: str = None,
+                       model: str = None,
+                       t2i_copilot: dict = None,  # 新增: T2I Copilot 配置参数
+                       user_id: int = None 
                        ):
     """
     更新用户配置
@@ -50,6 +51,7 @@ def update_user_config(db: Session, content_text: str = None,
         openai_url: OpenAI URL (可选)
         openai_api_key: OpenAI API Key (可选)
         model: LLM 模型名称 (可选)
+        t2i_copilot: T2I Copilot配置，包含硅基流动和Groq的API信息 (可选)
         user_id: 用户ID，如果提供则更新特定用户的配置
         
     Returns:
@@ -96,10 +98,40 @@ def update_user_config(db: Session, content_text: str = None,
             config.openai_api_key = openai_api_key
             logger.info(f"已设置 openai_api_key") # 不记录Key本身，极其敏感
             
-        # 新增：更新 model 字段
+        # 更新 model 字段
         if model is not None:
             config.model = model
             logger.info(f"已设置 model: {model}")
+            
+        # 更新 t2i_copilot 字段
+        if t2i_copilot is not None:
+            # 确保是有效的JSON格式数据
+            if isinstance(t2i_copilot, str):
+                try:
+                    # 如果是字符串，尝试解析为Python对象
+                    t2i_copilot = json.loads(t2i_copilot)
+                    logger.info("已将t2i_copilot字符串转换为Python对象")
+                except json.JSONDecodeError as e:
+                    logger.error(f"无效的JSON字符串: {e}")
+                    raise HTTPException(status_code=400, detail=f"无效的t2i_copilot JSON格式: {str(e)}")
+            
+            # 处理 Pydantic 模型，转换为字典
+            if hasattr(t2i_copilot, "model_dump"):
+                # 如果是 Pydantic 模型，使用 model_dump 转换为字典
+                t2i_copilot = t2i_copilot.model_dump()
+                logger.info("已将 Pydantic 模型转换为字典")
+            elif hasattr(t2i_copilot, "dict"):
+                # 兼容旧版 Pydantic
+                t2i_copilot = t2i_copilot.dict()
+                logger.info("已将 Pydantic 模型转换为字典 (旧版)")
+            
+            # 过滤掉None值，避免不必要的存储
+            if isinstance(t2i_copilot, dict):
+                t2i_copilot = {k: v for k, v in t2i_copilot.items() if v is not None}
+            
+            # 设置t2i_copilot字段
+            config.t2i_copilot = t2i_copilot
+            logger.info("已设置 t2i_copilot 配置")
             
         db.commit()
         logger.info("数据库 commit 成功")

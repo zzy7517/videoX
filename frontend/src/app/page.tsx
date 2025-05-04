@@ -99,7 +99,19 @@ function MainContent() {
     openaiApiKey,
     updateOpenaiApiKey,
     model,
-    updateModel
+    updateModel,
+    
+    // T2I Copilot相关的状态和方法
+    siliconFlowApiKey,
+    updateSiliconFlowApiKey,
+    siliconFlowModels,
+    updateSiliconFlowModels,
+    groqApiKey,
+    updateGroqApiKey,
+    groqModels,
+    updateGroqModels,
+    systemPrompt,
+    updateSystemPrompt
   } = useTextManager();
 
   // === UI 状态 ===
@@ -167,19 +179,20 @@ function MainContent() {
                     设置
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-[800px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg">
+                <DialogContent className="sm:max-w-[800px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg max-h-[90vh] flex flex-col">
                   <DialogHeader>
                     <DialogTitle className="text-xl font-semibold">设置</DialogTitle>
                   </DialogHeader>
-                  <Tabs defaultValue="text-input" className="flex">
-                    <TabsList className="flex-shrink-0 flex flex-col h-auto mr-4 border-r pr-2">
+                  <Tabs defaultValue="text-input" className="flex flex-col sm:flex-row flex-1 overflow-hidden">
+                    <TabsList className="flex-shrink-0 flex flex-col h-auto mb-4 sm:mb-0 sm:mr-4 sm:border-r sm:pr-2">
                       <TabsTrigger value="text-input" className="justify-start mb-2">剧本</TabsTrigger>
                       <TabsTrigger value="comfyui-config" className="justify-start mb-2">comfyui设置</TabsTrigger>
-                      <TabsTrigger value="llm-config" className="justify-start">LLM设置</TabsTrigger>
+                      <TabsTrigger value="llm-config" className="justify-start mb-2">LLM设置</TabsTrigger>
+                      <TabsTrigger value="t2i-copilot" className="justify-start">T2I Copilot</TabsTrigger>
                     </TabsList>
 
-                    <div className="flex-grow">
-                      <TabsContent value="text-input" className="space-y-4 py-4 mt-0">
+                    <div className="flex-grow overflow-y-auto pr-2">
+                      <TabsContent value="text-input" className="space-y-4 py-2 mt-0 h-full">
                         <ScrollableTextarea
                           value={inputText}
                           onChange={(e) => handleTextChange(e.target.value)}
@@ -204,7 +217,7 @@ function MainContent() {
                         </div>
                       </TabsContent>
 
-                      <TabsContent value="comfyui-config" className="space-y-4 py-4 mt-0">
+                      <TabsContent value="comfyui-config" className="space-y-4 py-2 mt-0 h-full">
                         {/* ComfyUI URL输入框 */}
                         <div className="space-y-2">
                           <label htmlFor="comfyui-url" className="block text-sm font-medium">
@@ -244,7 +257,7 @@ function MainContent() {
                       </TabsContent>
 
                       {/* 新增 LLM 设置内容 */}
-                      <TabsContent value="llm-config" className="space-y-4 py-4 mt-0">
+                      <TabsContent value="llm-config" className="space-y-4 py-2 mt-0 h-full">
                         {/* OpenAI URL 输入框 */}
                         <div className="space-y-2">
                           <label htmlFor="openai-url" className="block text-sm font-medium">
@@ -297,9 +310,114 @@ function MainContent() {
                           <p className="text-green-500 text-sm">{textMessage}</p>
                         )}
                       </TabsContent>
+                      
+                      {/* T2I Copilot 设置 */}
+                      <TabsContent value="t2i-copilot" className="space-y-4 py-2 mt-0 h-full">
+                        <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md text-sm text-blue-600 dark:text-blue-300">
+                          此处配置用于T2I Copilot功能，数据将以JSON格式存储在后端。
+                        </div>
+                      
+                        {/* System Prompt */}
+                        <div className="space-y-4 border p-4 rounded-md">
+                          <h3 className="font-medium">System Prompt 配置</h3>
+                          
+                          <div className="space-y-2">
+                            <label htmlFor="system-prompt" className="block text-sm font-medium">
+                              System Prompt
+                            </label>
+                            <textarea
+                              id="system-prompt"
+                              value={systemPrompt || ''}
+                              onChange={(e) => updateSystemPrompt(e.target.value)}
+                              placeholder="这里的提示词会将分镜转化为对应的文生图提示词"
+                              className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm min-h-[100px]"
+                              disabled={isBulkUpdating || isLoading || isSaving}
+                            />
+                          </div>
+                        </div>
+                        
+                        {/* 硅基流动配置 */}
+                        <div className="space-y-4 border p-4 rounded-md">
+                          <h3 className="font-medium">硅基流动配置</h3>
+                          
+                          {/* 硅基流动的apikey */}
+                          <div className="space-y-2">
+                            <label htmlFor="silicon-flow-apikey" className="block text-sm font-medium">
+                              API Key
+                            </label>
+                            <input
+                              id="silicon-flow-apikey"
+                              type="password"
+                              value={siliconFlowApiKey || ''}
+                              onChange={(e) => updateSiliconFlowApiKey(e.target.value)}
+                              placeholder="输入硅基流动的 API Key"
+                              className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                              disabled={isBulkUpdating || isLoading || isSaving}
+                            />
+                          </div>
+                          
+                          {/* 硅基流动模型列表 */}
+                          <div className="space-y-2">
+                            <label htmlFor="silicon-flow-models" className="block text-sm font-medium">
+                              模型列表
+                            </label>
+                            <textarea
+                              id="silicon-flow-models"
+                              value={siliconFlowModels || ''}
+                              onChange={(e) => updateSiliconFlowModels(e.target.value)}
+                              placeholder="输入模型名称，每行一个"
+                              className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm min-h-[80px]"
+                              disabled={isBulkUpdating || isLoading || isSaving}
+                            />
+                          </div>
+                        </div>
+                        
+                        {/* Groq 配置 */}
+                        <div className="space-y-4 border p-4 rounded-md">
+                          <h3 className="font-medium">Groq 配置</h3>
+                          
+                          {/* Groq API Key */}
+                          <div className="space-y-2">
+                            <label htmlFor="groq-apikey" className="block text-sm font-medium">
+                              API Key
+                            </label>
+                            <input
+                              id="groq-apikey"
+                              type="password"
+                              value={groqApiKey || ''}
+                              onChange={(e) => updateGroqApiKey(e.target.value)}
+                              placeholder="输入 Groq 的 API Key"
+                              className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
+                              disabled={isBulkUpdating || isLoading || isSaving}
+                            />
+                          </div>
+                          
+                          {/* Groq 模型列表 */}
+                          <div className="space-y-2">
+                            <label htmlFor="groq-models" className="block text-sm font-medium">
+                              模型列表
+                            </label>
+                            <textarea
+                              id="groq-models"
+                              value={groqModels || ''}
+                              onChange={(e) => updateGroqModels(e.target.value)}
+                              placeholder="输入模型名称，每行一个"
+                              className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm min-h-[80px]"
+                              disabled={isBulkUpdating || isLoading || isSaving}
+                            />
+                          </div>
+                        </div>
+                        
+                        {textError && (
+                          <p className="text-red-500 text-sm">{textError}</p>
+                        )}
+                        {textMessage && (
+                          <p className="text-green-500 text-sm">{textMessage}</p>
+                        )}
+                      </TabsContent>
                     </div>
                   </Tabs>
-                  <DialogFooter className="flex flex-wrap gap-3 justify-between">
+                  <DialogFooter className="flex flex-wrap gap-3 justify-end mt-6 pt-4 border-t">
                       <Button
                           variant="outline"
                           onClick={saveTextContent}

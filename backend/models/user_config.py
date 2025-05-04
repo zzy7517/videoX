@@ -18,6 +18,7 @@ class UserConfig(Base):
     openai_url = Column(String, nullable=True)  # 存储OpenAI URL
     openai_api_key = Column(String, nullable=True)  # 存储OpenAI API Key
     model = Column(String, nullable=True)  # 新增：存储 LLM 模型名称
+    t2i_copilot = Column(JSON, nullable=True)   # 存储硅基流动和groq的api信息
 
     # 关系定义
     user = relationship("User", back_populates="content")

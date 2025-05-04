@@ -68,14 +68,23 @@ class BulkUpdateRequest(BaseModel):
     """批量替换所有分镜的请求模型 (用于文本导入)"""
     shots: List[ShotBase] # 要替换成的新分镜列表，现在包含 t2i_prompt
 
-# --- 文本内容相关模型 (保持不变) ---
+# --- T2I Copilot 配置模型 ---
+class T2ICopilotConfig(BaseModel):
+    silicon_flow_api_key: Optional[str] = None
+    silicon_flow_models: Optional[str] = None
+    groq_api_key: Optional[str] = None
+    groq_models: Optional[str] = None
+    system_prompt: Optional[str] = None
+
+# --- 文本内容相关模型 ---
 class TextContentBase(BaseModel):
     content: Optional[str] = None
     global_comfyui_payload: Optional[dict] = None
     comfyui_url: Optional[str] = None
-    openai_url: Optional[str] = None  # 新增 OpenAI URL
-    openai_api_key: Optional[str] = None # 新增 OpenAI API Key
-    model: Optional[str] = None # 新增: LLM 模型名称
+    openai_url: Optional[str] = None  # OpenAI URL
+    openai_api_key: Optional[str] = None # OpenAI API Key
+    model: Optional[str] = None # LLM 模型名称
+    t2i_copilot: Optional[T2ICopilotConfig] = None # T2I Copilot 配置
 
 class ConfigResponse(TextContentBase):
     id: int
@@ -84,6 +93,30 @@ class ConfigResponse(TextContentBase):
 
     class Config:
         from_attributes = True
+        
+    @classmethod
+    def model_validate(cls, obj, **kwargs):
+        """
+        从ORM对象创建Pydantic模型，兼容旧版和新版Pydantic
+        """
+        if hasattr(obj, "__dict__"):  # 对象是ORM模型
+            data = {}
+            # 基本字段
+            for field_name in ["id", "content", "created_at", "updated_at", 
+                          "global_comfyui_payload", "comfyui_url", 
+                          "openai_url", "openai_api_key", "model"]:
+                if hasattr(obj, field_name):
+                    data[field_name] = getattr(obj, field_name)
+
+            # 处理 t2i_copilot 字段，将JSON转换为Pydantic模型
+            if hasattr(obj, "t2i_copilot") and obj.t2i_copilot:
+                data["t2i_copilot"] = T2ICopilotConfig.model_validate(obj.t2i_copilot)
+            
+            # 使用父类的 model_validate 方法
+            return super().model_validate(data, **kwargs)
+        
+        # 如果是字典或者其他对象，直接使用父类方法
+        return super().model_validate(obj, **kwargs)
 
 # --- API 路由 ---
 main_router = APIRouter(tags=["main"])
@@ -201,7 +234,26 @@ async def get_user_config(request: Request, db: Session = Depends(database.get_d
     user_id = user.user_id if user else None
     
     logger.info(f"用户 {user_id if user_id else '未登录'} 获取文本配置")
-    return user_config_service.get_user_config(db, user_id)
+    config = user_config_service.get_user_config(db, user_id)
+    
+    # 手动处理 t2i_copilot 字段
+    if hasattr(config, "t2i_copilot") and config.t2i_copilot:
+        # 创建响应对象
+        response_data = {
+            "id": config.id,
+            "content": config.content,
+            "created_at": config.created_at,
+            "updated_at": config.updated_at,
+            "global_comfyui_payload": config.global_comfyui_payload,
+            "comfyui_url": config.comfyui_url,
+            "openai_url": config.openai_url,
+            "openai_api_key": config.openai_api_key,
+            "model": config.model,
+            "t2i_copilot": config.t2i_copilot  # 这会在ConfigResponse.model_validate中被处理
+        }
+        return ConfigResponse.model_validate(response_data)
+    
+    return config
 
 @main_router.put("/text/", response_model=ConfigResponse)
 async def update_user_config(text: TextContentBase, request: Request, db: Session = Depends(database.get_db)):
@@ -216,10 +268,11 @@ async def update_user_config(text: TextContentBase, request: Request, db: Sessio
         text.content,
         text.global_comfyui_payload,
         text.comfyui_url,
-        text.openai_url,  # 传递 OpenAI URL
-        text.openai_api_key, # 传递 OpenAI API Key
-        text.model, # 传递 LLM 模型名称
-        user_id # 传递用户ID
+        text.openai_url,
+        text.openai_api_key,
+        text.model,
+        text.t2i_copilot,  # 传递 T2I Copilot 配置
+        user_id
     )
 
 # 注册主路由
