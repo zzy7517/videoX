@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Shot, 
+  Project,
   loadShots as apiLoadShots,
+  loadProjects as apiLoadProjects,
   addShot as apiAddShot, 
   saveShot as apiSaveShot,
   deleteShot as apiDeleteShot,
@@ -67,6 +69,9 @@ export const resetLLMClientCache = (provider?: 'groq' | 'siliconflow' | 'openai'
 export const useShotManager = () => {
   // === 状态定义 ===
   const [shots, setShots] = useState<Shot[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [currentProjectId, setCurrentProjectId] = useState<number | undefined>(undefined);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingShots, setIsLoadingShots] = useState(false);
   const [shotMessage, setShotMessage] = useState<ShotMessage | null>(null);
   const [isDeletingAllShots, setIsDeletingAllShots] = useState(false);
@@ -86,13 +91,45 @@ export const useShotManager = () => {
   }, []);
 
   /**
+   * 从服务器加载所有项目
+   */
+  const loadProjects = useCallback(async () => {
+    setIsLoadingProjects(true);
+    setError("");
+    try {
+      const data = await apiLoadProjects();
+      setProjects(data);
+      
+      // 如果有项目且当前没有选择项目，自动选择第一个
+      if (data.length > 0 && currentProjectId === undefined) {
+        setCurrentProjectId(data[0].project_id);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error("加载项目失败:", error);
+      const errorMsg = error instanceof Error ? error.message : "无法加载项目列表";
+      setError(errorMsg);
+      clearError();
+      throw error;
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }, [clearError, currentProjectId]);
+
+  /**
    * 从服务器加载所有分镜
    */
   const loadShots = useCallback(async () => {
+    if (!currentProjectId) {
+      console.log("未选择项目，无法加载分镜");
+      return [];
+    }
+    
     setIsLoadingShots(true);
     setError("");
     try {
-      const data = await apiLoadShots();
+      const data = await apiLoadShots(currentProjectId);
       setShots(data);
       if (data.length === 0) {
         console.log("加载到的分镜列表为空");
@@ -107,14 +144,45 @@ export const useShotManager = () => {
     } finally {
       setIsLoadingShots(false);
     }
-  }, [clearError]);
+  }, [clearError, currentProjectId]);
+
+  /**
+   * 切换当前项目
+   */
+  const switchProject = useCallback(async (projectId: number) => {
+    if (projectId === currentProjectId) return;
+    
+    // 清除所有保存定时器
+    Object.values(saveTimersRef.current).forEach(clearTimeout);
+    saveTimersRef.current = {};
+    
+    setCurrentProjectId(projectId);
+    // 加载新项目的分镜列表
+    setIsLoadingShots(true);
+    try {
+      const data = await apiLoadShots(projectId);
+      setShots(data);
+    } catch (error) {
+      console.error(`加载项目 ${projectId} 的分镜失败:`, error);
+      const errorMsg = error instanceof Error ? error.message : "无法加载该项目的分镜";
+      setError(errorMsg);
+      clearError();
+    } finally {
+      setIsLoadingShots(false);
+    }
+  }, [clearError, currentProjectId]);
 
   /**
    * 添加新分镜到列表末尾
    */
   const addShot = useCallback(async () => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法添加分镜");
+      return [];
+    }
+    
     try {
-      const updatedShots = await apiAddShot();
+      const updatedShots = await apiAddShot(currentProjectId);
       setShots(updatedShots);
       return updatedShots;
     } catch (error) {
@@ -124,7 +192,7 @@ export const useShotManager = () => {
       clearError();
       throw error;
     }
-  }, [clearError]);
+  }, [clearError, currentProjectId]);
 
   /**
    * 更新本地分镜状态（用于输入时的即时反馈）
@@ -135,6 +203,13 @@ export const useShotManager = () => {
         shot.shot_id === id ? { ...shot, ...updates } : shot
       )
     );
+    
+    // 确保有项目ID才能保存
+    if (!currentProjectId) {
+      console.error("未选择项目，无法保存分镜");
+      return;
+    }
+    
     // 找到对应的shot，并合并更新
     const shotToSave = shots.find(s => s.shot_id === id);
     if (shotToSave) {
@@ -148,7 +223,7 @@ export const useShotManager = () => {
         console.log(`自动保存分镜 ${id}`);
         setShotMessage({ id, message: "保存中...", type: 'success' });
         
-        apiSaveShot(id, autoSaveData)
+        apiSaveShot(id, autoSaveData, currentProjectId)
           .then(() => {
             // 显示成功消息
             setShotMessage({ id, message: "已保存", type: 'success' });
@@ -165,12 +240,18 @@ export const useShotManager = () => {
         delete saveTimersRef.current[id];
       }, 3000);
     }
-  }, [shots]);
+  }, [shots, currentProjectId]);
 
   /**
    * 保存单个分镜内容到后端
    */
   const saveShot = useCallback(async (id: number, shotData: Partial<Pick<Shot, 'content' | 't2i_prompt'>>) => {
+    // 确保有projectId才能保存
+    if (!currentProjectId) {
+      console.error("未选择项目，无法保存分镜");
+      return;
+    }
+    
     setShotMessage({ id, message: "保存中...", type: 'success' });
 
     try {
@@ -199,49 +280,32 @@ export const useShotManager = () => {
           'shotData包含t2i_prompt字段:', 't2i_prompt' in shotData,
           '提示词值:', shotData.t2i_prompt);
       }
-      
-      // 如果需要生成提示词
-      if (shouldGeneratePrompt) {
-        // 查询是否配置了LLM设置
-        const textResponse = await fetchWithAuth('/api/text/');
-        const textData = await textResponse.json();
-        const llmConfig = textData.llm_config || {};
+
+      // 等待API保存分镜内容
+      await apiSaveShot(id, shotData, currentProjectId);
         
-        // 我们不再使用system_prompt，因为该字段已被移除
-        // 这里可以在将来添加自定义提示词生成逻辑
-        console.log("LLM配置:", {
-          hasGroq: !!(llmConfig.groq_api_key && llmConfig.groq_models),
-          hasSiliconFlow: !!(llmConfig.silicon_flow_api_key && llmConfig.silicon_flow_models),
-          hasOpenAI: !!(llmConfig.openai_api_key && llmConfig.openai_url)
-        });
-        
-        // todo 暂时移除自动提示词生成，因为需要重新设计这部分功能
-        // 将来可以基于shotData.content自动生成提示词，无需system_prompt
-      }
-
-      await apiSaveShot(id, shotData); // 传递对象给 apiSaveShot
-
-      // 更新本地状态，使生成的提示词显示在UI上
-      setShots(prev => 
-        prev.map(shot => 
-          shot.shot_id === id 
-            ? { ...shot, ...shotData } 
-            : shot
-        )
-      );
-
-      // 显示成功消息
+      // 保存成功
       setShotMessage({ id, message: "已保存", type: 'success' });
-      // 3秒后清除消息
-      setTimeout(() => setShotMessage(prev => (prev?.id === id ? null : prev)), 3000);
+      
+      // 3秒后清除消息提示
+      setTimeout(() => {
+        setShotMessage(null);
+      }, 3000);
+      
     } catch (error) {
       console.error(`保存分镜 ${id} 失败:`, error);
       setShotMessage({ id, message: "保存失败", type: 'error' });
-      // 失败消息也停留3秒
-      setTimeout(() => setShotMessage(prev => (prev?.id === id ? null : prev)), 3000);
-      throw error;
+      
+      const errorMsg = error instanceof Error ? error.message : "保存分镜失败";
+      setError(errorMsg);
+      clearError();
+      
+      // 5秒后清除错误消息
+      setTimeout(() => {
+        setShotMessage(null);
+      }, 5000);
     }
-  }, [shots]);
+  }, [shots, clearError, currentProjectId]);
 
   /**
    * 处理分镜文本框失焦事件，立即保存
@@ -267,11 +331,16 @@ export const useShotManager = () => {
    * 删除指定 ID 的分镜
    */
   const deleteShot = useCallback(async (id: number) => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法删除分镜");
+      return [];
+    }
+    
     // 防止删除最后一个分镜
     if (shots.length <= 1) {
       setError("至少保留一个分镜");
       clearError();
-      return;
+      return [];
     }
 
     // 清除可能存在的保存定时器
@@ -282,7 +351,7 @@ export const useShotManager = () => {
 
     setIsDeletingShot(id);
     try {
-      const updatedShots = await apiDeleteShot(id);
+      const updatedShots = await apiDeleteShot(id, currentProjectId);
       setShots(updatedShots);
       return updatedShots;
     } catch (error) {
@@ -294,15 +363,20 @@ export const useShotManager = () => {
     } finally {
       setIsDeletingShot(null);
     }
-  }, [shots.length, clearError]);
+  }, [shots.length, clearError, currentProjectId]);
 
   /**
    * 在指定分镜上方或下方插入新分镜
    */
   const insertShot = useCallback(async (referenceShotId: number, position: 'above' | 'below') => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法插入分镜");
+      return [];
+    }
+    
     setIsInsertingShot(referenceShotId);
     try {
-      const updatedShots = await apiInsertShot(referenceShotId, position);
+      const updatedShots = await apiInsertShot(referenceShotId, position, currentProjectId);
       setShots(updatedShots);
       return updatedShots;
     } catch (error) {
@@ -314,12 +388,17 @@ export const useShotManager = () => {
     } finally {
       setIsInsertingShot(null);
     }
-  }, [clearError]);
+  }, [clearError, currentProjectId]);
 
   /**
    * 删除所有分镜
    */
   const deleteAllShots = useCallback(async () => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法删除分镜");
+      return;
+    }
+    
     if (!confirm("确定要删除所有分镜吗？此操作不可撤销。")) {
       return;
     }
@@ -330,7 +409,7 @@ export const useShotManager = () => {
       Object.values(saveTimersRef.current).forEach(clearTimeout);
       saveTimersRef.current = {};
 
-      await apiDeleteAllShots();
+      await apiDeleteAllShots(currentProjectId);
 
       // 删除成功后，重新加载列表
       await loadShots();
@@ -343,20 +422,25 @@ export const useShotManager = () => {
     } finally {
       setIsDeletingAllShots(false);
     }
-  }, [loadShots, clearError]);
+  }, [loadShots, clearError, currentProjectId]);
 
   /**
    * 从文本批量替换分镜
    */
   const replaceShotsFromText = useCallback(async (text: string) => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法导入分镜");
+      return [];
+    }
+    
     if (!text.trim()) {
       setError("文本内容为空，无法导入");
       clearError();
-      return;
+      return [];
     }
 
     if (shots.length > 0 && !confirm("此操作将会替换所有现有分镜，确定继续吗？")) {
-      return;
+      return [];
     }
 
     // 清除所有保存定时器
@@ -366,7 +450,7 @@ export const useShotManager = () => {
     setIsBulkUpdating(true);
     setError("");
     try {
-      const newShots = await apiReplaceShotsFromText(text);
+      const newShots = await apiReplaceShotsFromText(text, currentProjectId);
       setShots(newShots);
       return newShots;
     } catch (error) {
@@ -378,7 +462,7 @@ export const useShotManager = () => {
     } finally {
       setIsBulkUpdating(false);
     }
-  }, [shots.length, clearError]);
+  }, [shots.length, clearError, currentProjectId]);
 
   // 组件卸载时清除所有定时器
   useEffect(() => {
@@ -387,13 +471,23 @@ export const useShotManager = () => {
     };
   }, []);
 
-  // 初始加载分镜
+  // 初始加载项目和分镜
   useEffect(() => {
-    loadShots();
-  }, [loadShots]);
+    loadProjects().then((projects) => {
+      // 只有在有项目ID时才加载分镜
+      if (currentProjectId) {
+        loadShots();
+      }
+    });
+  }, [loadProjects, loadShots, currentProjectId]);
 
   return {
-    // 状态
+    // 项目相关状态
+    projects,
+    currentProjectId,
+    isLoadingProjects,
+    
+    // 分镜相关状态
     shots,
     isLoadingShots,
     shotMessage,
@@ -403,7 +497,11 @@ export const useShotManager = () => {
     isDeletingShot,
     error,
     
-    // 操作方法
+    // 项目相关操作
+    loadProjects,
+    switchProject,
+    
+    // 分镜相关操作
     loadShots,
     addShot,
     updateShotLocal,

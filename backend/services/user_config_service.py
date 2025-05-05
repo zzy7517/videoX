@@ -55,11 +55,6 @@ def update_user_config(db: Session, content_text: str = None,
     try:
         config = models.UserConfig.get_or_create(db, user_id)
         
-        # 更新各个字段（如果提供了值）
-        if content_text is not None:
-            config.content = content_text
-            logger.info("已更新 content")
-        
         if global_comfyui_payload is not None:
             # 确保是有效的JSON格式数据
             if isinstance(global_comfyui_payload, str):
@@ -123,25 +118,3 @@ def update_user_config(db: Session, content_text: str = None,
         db.rollback()
         log_exception(logger, f"更新用户配置失败: {str(e)}")
         raise HTTPException(status_code=500, detail="更新用户配置失败")
-
-def clear_text_content(db: Session, user_id: int = None):
-    """
-    只清空文本内容
-    
-    Args:
-        db: 数据库会话
-        user_id: 用户ID，如果提供则清空特定用户的内容
-    """
-    logger.info(f"正在清空用户 {user_id if user_id else '默认'} 的文本内容")
-    try:
-        content = models.UserConfig.get_or_create(db, user_id)
-        content.content = ""  # 设置为空字符串而不是 None，避免潜在问题
-        # updated_at 会自动更新 (假设模型中配置了 onupdate)
-        db.commit()
-        logger.info("文本内容已清空")
-    except Exception as e:
-        db.rollback()
-        log_exception(logger, f"清空文本内容失败: {str(e)}")
-        raise HTTPException(status_code=500, detail="清空文本内容失败")
-
-    return content 

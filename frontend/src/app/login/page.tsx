@@ -12,10 +12,10 @@ export default function LoginPage() {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
-  // 如果已登录，重定向到主页
+  // 如果已登录，重定向到项目页
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
-      router.push('/');
+      router.push('/projects');
     }
   }, [isAuthenticated, isLoading, router]);
 
@@ -33,7 +33,7 @@ export default function LoginPage() {
         
         <LoginForm 
           onSuccess={() => {
-            router.push('/');
+            router.push('/projects');
           }}
         />
       </div>

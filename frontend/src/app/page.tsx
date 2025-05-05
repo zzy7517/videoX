@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Textarea, ScrollableTextarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,6 +27,7 @@ import { Navbar } from '@/lib/features/auth/Navbar';
  */
 export default function Home() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isAuthenticated, isLoading } = useAuth();
   
   // 如果未登录且不在加载中，重定向到登录页
@@ -35,6 +36,16 @@ export default function Home() {
       router.push('/login');
     }
   }, [isAuthenticated, isLoading, router]);
+
+  // 如果已登录但没有选择项目，重定向到项目页
+  useEffect(() => {
+    if (isAuthenticated && !isLoading) {
+      const projectId = searchParams.get('projectId');
+      if (!projectId) {
+        router.push('/projects');
+      }
+    }
+  }, [isAuthenticated, isLoading, router, searchParams]);
 
   // 如果正在加载认证状态，显示加载中
   if (isLoading) {
@@ -58,6 +69,10 @@ export default function Home() {
 
 // 分离出主要内容组件
 function MainContent() {
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get('projectId') ? parseInt(searchParams.get('projectId')!) : undefined;
+  const router = useRouter();
+  
   // === 使用自定义 Hook 管理分镜相关状态和操作 ===
   const {
     shots,
@@ -69,6 +84,12 @@ function MainContent() {
     isDeletingShot,
     error: shotError,
     
+    // 项目相关状态和操作
+    projects,
+    currentProjectId,
+    isLoadingProjects,
+    switchProject,
+    
     addShot,
     updateShotLocal,
     handleShotBlur,
@@ -77,6 +98,18 @@ function MainContent() {
     deleteAllShots,
     replaceShotsFromText
   } = useShotManager();
+
+  // 确保当前项目ID与URL参数一致
+  useEffect(() => {
+    if (projectId && projectId !== currentProjectId) {
+      switchProject(projectId);
+    }
+  }, [projectId, currentProjectId, switchProject]);
+  
+  // 返回项目列表
+  const goToProjects = () => {
+    router.push('/projects');
+  };
 
   // === 使用自定义 Hook 管理文本相关状态和操作 ===
   const {
@@ -124,53 +157,18 @@ function MainContent() {
     openAIKeyInvalid
   } = useTextManager();
 
-  // === UI 状态 ===
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [saveButtonClicked, setSaveButtonClicked] = useState(false);
-
-  /**
-   * 将输入文本分割为分镜并导入
-   */
-  const splitByLines = async () => {
-    try {
-      // 首先保存设置
-      await saveTextContent(); 
-      // 检查保存过程中是否出现错误，如果textError被设置，则不继续执行导出
-      if (textError) {
-        console.error("保存设置失败，取消导出分镜:", textError);
-        // 可以选择在这里显示一个更明确的错误消息给用户
-        return; 
-      }
-      
-      // 然后执行导出
-      await replaceShotsFromText(inputText);
-      resetTextState(); // 清空文本状态 (如果保存和导出都成功)
-      setDialogOpen(false); // 关闭对话框
-    } catch (error) {
-      console.error("导入分镜失败:", error);
-      // 错误信息由 hook 内部处理
-    }
-  }
-
-  // 当对话框打开时加载文本
-  useEffect(() => {
-    if (dialogOpen) {
-      loadTextContent();
-    }
-  }, [dialogOpen, loadTextContent]);
-
-  // 关闭对话框时的清理
-  const handleDialogChange = (open: boolean) => {
-    setDialogOpen(open);
-    if (!open) {
-      resetTextState();
-    }
-  }
-
   // 合并来自两个地方的错误
   const displayError = textError || shotError;
-  // 合并来自两个地方的消息
-  const displayMessage = textMessage || (dialogOpen ? "" : textMessage);
+  // 使用文本管理器的消息
+  const displayMessage = textMessage;
+
+  // 处理项目切换
+  const handleProjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const projectId = parseInt(e.target.value, 10);
+    if (!isNaN(projectId)) {
+      switchProject(projectId);
+    }
+  };
 
   // === UI 渲染 ===
   return (
@@ -180,358 +178,34 @@ function MainContent() {
         <div className="max-w-7xl mx-auto space-y-8">
           {/* 顶部操作栏 */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 backdrop-blur-sm bg-white/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-              分镜编辑器
-            </h1>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                分镜编辑器
+              </h1>
+              
+              {/* 项目信息和返回按钮 */}
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={goToProjects}
+                  className="flex items-center gap-1 text-slate-700 dark:text-slate-300"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                  </svg>
+                  返回项目列表
+                </Button>
+                
+                {projects.length > 0 && currentProjectId && (
+                  <div className="text-sm font-medium text-slate-700 dark:text-slate-300 ml-2">
+                    当前项目: {projects.find(p => p.project_id === currentProjectId)?.name || `项目 ${currentProjectId}`}
+                  </div>
+                )}
+              </div>
+            </div>
+            
             <div className="flex flex-wrap gap-3">
-              <Dialog open={dialogOpen} onOpenChange={handleDialogChange}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
-                    设置
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[800px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-lg max-h-[90vh] flex flex-col">
-                  <DialogHeader>
-                    <DialogTitle className="text-xl font-semibold">设置</DialogTitle>
-                  </DialogHeader>
-                  <Tabs defaultValue="text-input" className="flex flex-col sm:flex-row flex-1 overflow-hidden">
-                    <TabsList className="flex-shrink-0 flex flex-col h-auto mb-4 sm:mb-0 sm:mr-4 sm:border-r sm:pr-2">
-                      <TabsTrigger value="text-input" className="justify-start mb-2">剧本</TabsTrigger>
-                      <TabsTrigger value="comfyui-config" className="justify-start mb-2">comfyui设置</TabsTrigger>
-                      <TabsTrigger value="t2i-copilot" className="justify-start">大语言模型设置</TabsTrigger>
-                    </TabsList>
-
-                    <div className="flex-grow overflow-y-auto pr-2">
-                      <TabsContent value="text-input" className="space-y-4 py-2 mt-0 h-full">
-                        <ScrollableTextarea
-                          value={inputText}
-                          onChange={(e) => handleTextChange(e.target.value)}
-                          placeholder="在此粘贴或输入文本，每行将成为一个分镜..."
-                          className="min-h-[200px] max-h-[400px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
-                          disabled={isBulkUpdating || isLoading || isSaving} 
-                        />
-                        {textError && (
-                          <p className="text-red-500 text-sm">{textError}</p>
-                        )}
-                        {textMessage && (
-                          <p className="text-green-500 text-sm">{textMessage}</p>
-                        )}
-                        <div className="flex justify-end mt-4">
-                            <Button
-                                onClick={splitByLines}
-                                disabled={isBulkUpdating || !inputText.trim() || isLoading || isSaving} 
-                                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-90 transition-opacity"
-                            >
-                                {isBulkUpdating ? "导出中..." : "剧本导出为分镜(覆盖)"}
-                            </Button>
-                        </div>
-                      </TabsContent>
-
-                      <TabsContent value="comfyui-config" className="space-y-4 py-2 mt-0 h-full">
-                        {/* ComfyUI URL输入框 */}
-                        <div className="space-y-2">
-                          <label htmlFor="comfyui-url" className="block text-sm font-medium">
-                            ComfyUI URL
-                          </label>
-                          <input
-                            id="comfyui-url"
-                            type="text"
-                            value={comfyuiUrl}
-                            onChange={(e) => updateComfyuiUrl(e.target.value)}
-                            placeholder="输入ComfyUI服务URL..."
-                            className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                            disabled={isBulkUpdating || isLoading || isSaving}
-                          />
-                        </div>
-                        <ScrollableTextarea
-                          value={comfyuiConfig ? JSON.stringify(comfyuiConfig, null, 2) : ""}
-                          onChange={(e) => {
-                            try {
-                              const parsed = e.target.value ? JSON.parse(e.target.value) : null;
-                              updateComfyuiConfig(parsed);
-                            } catch {
-                              // 允许用户输入无效JSON，但不更新状态
-                              console.log("无效的JSON格式");
-                            }
-                          }}
-                          placeholder="在此粘贴JSON格式的ComfyUI配置..."
-                          className="min-h-[200px] max-h-[400px] bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 font-mono text-sm"
-                          disabled={isBulkUpdating || isLoading || isSaving} 
-                        />
-                        {textError && (
-                          <p className="text-red-500 text-sm">{textError}</p>
-                        )}
-                        {textMessage && (
-                          <p className="text-green-500 text-sm">{textMessage}</p>
-                        )}
-                      </TabsContent>
-
-                      {/* LLM 设置 */}
-                      <TabsContent value="t2i-copilot" className="space-y-4 py-2 mt-0 h-full">
-                        <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md text-sm text-blue-600 dark:text-blue-300">
-                          此处配置用于LLM功能，包含语言模型(LLM)设置，数据将以JSON格式存储在后端。
-                        </div>
-                      
-                        {/* 免费LLM设置部分 */}
-                        <div className="space-y-4 border p-4 rounded-md">
-                          <h3 className="font-medium flex items-center gap-1.5">
-                            免费LLM设置
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                              免费
-                            </span>
-                          </h3>
-                        
-                          {/* 硅基流动配置 */}
-                          <div className="space-y-4 border-b pb-4 mb-4">
-                            <h4 className="font-medium">硅基流动配置</h4>
-                            
-                            {/* 硅基流动的apikey */}
-                            <div className="space-y-2">
-                              <label htmlFor="silicon-flow-apikey" className="block text-sm font-medium">
-                                API Key
-                              </label>
-                              <div className="flex gap-2 items-center">
-                              <input
-                                id="silicon-flow-apikey"
-                                type="password"
-                                value={siliconFlowApiKey || ''}
-                                onChange={(e) => updateSiliconFlowApiKey(e.target.value)}
-                                placeholder="输入硅基流动的 API Key"
-                                className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                                disabled={isBulkUpdating || isLoading || isSaving}
-                              />
-                                {siliconFlowApiKey && (
-                                  <div className="flex gap-2 items-center">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => validateSiliconFlowApiKey(siliconFlowApiKey)}
-                                      disabled={isValidatingSiliconFlow || isSaving || isBulkUpdating || isLoading}
-                                      className="flex-shrink-0 text-xs h-auto py-2"
-                                    >
-                                      {isValidatingSiliconFlow ? "验证中..." : "验证"}
-                                    </Button>
-                                    {siliconFlowKeyValid && (
-                                      <svg className="text-green-500 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    )}
-                                    {siliconFlowKeyInvalid && (
-                                      <svg className="text-red-500 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                      </svg>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            
-                            {/* 硅基流动模型列表 */}
-                            <div className="space-y-2">
-                              <label htmlFor="silicon-flow-models" className="block text-sm font-medium">
-                                模型列表
-                              </label>
-                              <textarea
-                                id="silicon-flow-models"
-                                value={siliconFlowModels || ''}
-                                onChange={(e) => updateSiliconFlowModels(e.target.value)}
-                                placeholder="输入模型名称，每行一个"
-                                className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm min-h-[80px]"
-                                disabled={isBulkUpdating || isLoading || isSaving}
-                              />
-                            </div>
-                          </div>
-                          
-                          {/* Groq 配置 */}
-                          <div className="space-y-4">
-                            <h4 className="font-medium">Groq 配置</h4>
-                            
-                            {/* Groq API Key */}
-                            <div className="space-y-2">
-                              <label htmlFor="groq-apikey" className="block text-sm font-medium">
-                                API Key
-                              </label>
-                              <div className="flex gap-2 items-center">
-                              <input
-                                id="groq-apikey"
-                                type="password"
-                                value={groqApiKey || ''}
-                                onChange={(e) => updateGroqApiKey(e.target.value)}
-                                placeholder="输入 Groq 的 API Key"
-                                className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                                disabled={isBulkUpdating || isLoading || isSaving}
-                              />
-                                {groqApiKey && (
-                                  <div className="flex gap-2 items-center">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => validateGroqApiKey(groqApiKey)}
-                                      disabled={isValidatingGroq || isSaving || isBulkUpdating || isLoading}
-                                      className="flex-shrink-0 text-xs h-auto py-2"
-                                    >
-                                      {isValidatingGroq ? "验证中..." : "验证"}
-                                    </Button>
-                                    {groqKeyValid && (
-                                      <svg className="text-green-500 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    )}
-                                    {groqKeyInvalid && (
-                                      <svg className="text-red-500 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                      </svg>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            
-                            {/* Groq 模型列表 */}
-                            <div className="space-y-2">
-                              <label htmlFor="groq-models" className="block text-sm font-medium">
-                                模型列表
-                              </label>
-                              <textarea
-                                id="groq-models"
-                                value={groqModels || ''}
-                                onChange={(e) => updateGroqModels(e.target.value)}
-                                placeholder="输入模型名称，每行一个"
-                                className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm min-h-[80px]"
-                                disabled={isBulkUpdating || isLoading || isSaving}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* 付费LLM设置部分 */}
-                        <div className="space-y-4 border p-4 rounded-md">
-                          <h3 className="font-medium flex items-center gap-1.5">
-                            OpenAI设置
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                              付费
-                            </span>
-                          </h3>
-                          
-                          {/* OpenAI URL 输入框 */}
-                          <div className="space-y-2">
-                            <label htmlFor="openai-url" className="block text-sm font-medium">
-                              OpenAI URL
-                            </label>
-                            <input
-                              id="openai-url"
-                              type="text"
-                              value={openaiUrl || ''}
-                              onChange={(e) => updateOpenaiUrl(e.target.value)}
-                              placeholder="输入 OpenAI 兼容的 URL (例如 https://api.openai.com/v1)"
-                              className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                              disabled={isBulkUpdating || isLoading || isSaving}
-                            />
-                          </div>
-                          
-                          {/* OpenAI API Key 输入框 */}
-                          <div className="space-y-2">
-                            <label htmlFor="openai-api-key" className="block text-sm font-medium">
-                              OpenAI API Key
-                            </label>
-                            <div className="flex gap-2 items-center">
-                              <input
-                                id="openai-api-key"
-                                type="password"
-                                value={openaiApiKey || ''}
-                                onChange={(e) => updateOpenaiApiKey(e.target.value)}
-                                placeholder="输入 OpenAI API Key"
-                                className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                                disabled={isBulkUpdating || isLoading || isSaving}
-                              />
-                              {openaiApiKey && (
-                                <div className="flex gap-2 items-center">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => validateOpenAIApiKey(openaiApiKey)}
-                                    disabled={isValidatingOpenAI || isSaving || isBulkUpdating || isLoading}
-                                    className="flex-shrink-0 text-xs h-auto py-2"
-                                  >
-                                    {isValidatingOpenAI ? "验证中..." : "验证"}
-                                  </Button>
-                                  {openAIKeyValid && (
-                                    <svg className="text-green-500 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  )}
-                                  {openAIKeyInvalid && (
-                                    <svg className="text-red-500 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          
-                          {/* LLM Model 输入框 */}
-                          <div className="space-y-2">
-                            <label htmlFor="llm-model" className="block text-sm font-medium">
-                              LLM Model
-                            </label>
-                            <input
-                              id="llm-model"
-                              type="text"
-                              value={model || ''}
-                              onChange={(e) => updateModel(e.target.value)}
-                              placeholder="输入使用的 LLM 模型名称 (例如 gpt-4o)"
-                              className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
-                              disabled={isBulkUpdating || isLoading || isSaving}
-                            />
-                          </div>
-                        </div>
-                        
-                        {textError && (
-                          <p className="text-red-500 text-sm">{textError}</p>
-                        )}
-                        {textMessage && (
-                          <p className="text-green-500 text-sm">{textMessage}</p>
-                        )}
-                      </TabsContent>
-                    </div>
-                  </Tabs>
-                  <DialogFooter className="flex flex-wrap gap-3 justify-end mt-6 pt-4 border-t relative">
-                      <Button
-                          variant="outline"
-                          onClick={() => {
-                            // 直接调用保存函数，让useConfigManager中的逻辑处理API密钥验证
-                            // 在内部实现中，未修改的API密钥将被自动视为已验证
-                            saveTextContent();
-                            setSaveButtonClicked(false);
-                          }}
-                          disabled={isSaving || isBulkUpdating || isLoading || isValidatingGroq || isValidatingSiliconFlow || isValidatingOpenAI}
-                          className="hover:bg-slate-100 dark:hover:bg-slate-700"
-                      >
-                          {isSaving ? "保存中..." : "保存设置"}
-                      </Button>
-                      {/* 保留错误提示UI，但仅在验证失败时显示 */}
-                      {(
-                        // 仅显示验证失败的API密钥提示
-                        (
-                          (groqApiKey && groqKeyInvalid) || // Groq API验证失败
-                          (siliconFlowApiKey && siliconFlowKeyInvalid) || // 硅基流动API验证失败
-                          (openaiApiKey && openAIKeyInvalid) // OpenAI API验证失败
-                        ) && saveButtonClicked
-                      ) && (
-                        <div className="absolute bottom-full right-0 mb-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded text-sm max-w-xs shadow-md opacity-100 transition-opacity duration-300 ease-in-out z-50">
-                          <div className="flex items-center">
-                            <svg className="w-5 h-5 mr-2 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
-                            API密钥验证失败，请先验证所有API密钥或移除它们
-                          </div>
-                          <div className="absolute w-2 h-2 bg-red-100 transform rotate-45 -bottom-1 right-5 border-b border-r border-red-400"></div>
-                        </div>
-                      )}
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
               <Button
                 variant="outline"
                 onClick={deleteAllShots}

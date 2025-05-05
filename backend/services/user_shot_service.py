@@ -10,28 +10,35 @@ import json
 # 设置日志
 logger = setup_logger("backend.services.user_shot_service")
 
-def get_user_shots_order(db: Session, user_id:int):
+def get_user_shots_order(db: Session, user_id:int, project_id:int=None):
     """
     获取用户分镜顺序
     
     Args:
         db: 数据库会话
-        user_id: 用户ID，默认为1
+        user_id: 用户ID
+        project_id: 项目ID，可选
         
     Returns:
         用户分镜顺序对象
     """
-    logger.info(f"正在获取用户 {user_id} 的分镜顺序")
+    logger.info(f"正在获取用户 {user_id} 项目 {project_id if project_id else '默认'} 的分镜顺序")
     
-    # 查询用户分镜顺序
-    user_shot = db.query(models.UserShot).filter(models.UserShot.user_id == user_id).first()
+    # 查询用户分镜顺序，如果指定了project_id则加上筛选条件
+    query = db.query(models.UserShot).filter(models.UserShot.user_id == user_id)
+    if project_id is not None:
+        query = query.filter(models.UserShot.project_id == project_id)
+    
+    user_shot = query.first()
     
     # 如果不存在，创建一个新的空顺序
     if not user_shot:
-        logger.info(f"用户 {user_id} 的分镜顺序记录不存在，将创建新记录")
+        logger.info(f"用户 {user_id} 项目 {project_id if project_id else '默认'} 的分镜顺序记录不存在，将创建新记录")
         user_shot = models.UserShot(
             user_id=user_id,
-            shots_order={}
+            project_id=project_id,
+            shots_order={},
+            script={}
         )
         db.add(user_shot)
         db.commit()
@@ -39,27 +46,28 @@ def get_user_shots_order(db: Session, user_id:int):
     
     return user_shot
 
-def get_ordered_shots(db: Session, user_id: int):
+def get_ordered_shots(db: Session, user_id: int, project_id: int=None):
     """
     获取按顺序排列的用户分镜
     
     Args:
         db: 数据库会话
         user_id: 用户ID
+        project_id: 项目ID，可选
         
     Returns:
         按顺序排列的分镜列表
     """
-    logger.info(f"正在获取用户 {user_id} 的所有分镜 (按顺序)")
+    logger.info(f"正在获取用户 {user_id} 项目 {project_id if project_id else '默认'} 的所有分镜 (按顺序)")
     
     try:
         # 获取用户分镜顺序
-        user_shot = get_user_shots_order(db, user_id)
+        user_shot = get_user_shots_order(db, user_id, project_id)
         shots_order = user_shot.shots_order
         
         # 如果顺序为空，直接返回空列表
         if not shots_order:
-            logger.info(f"用户 {user_id} 没有分镜顺序记录，返回空列表")
+            logger.info(f"用户 {user_id} 项目 {project_id if project_id else '默认'} 没有分镜顺序记录，返回空列表")
             return []
         
         # 获取顺序中指定的分镜ID列表
@@ -72,7 +80,7 @@ def get_ordered_shots(db: Session, user_id: int):
         # 如果查询到的分镜数量与顺序不一致，说明有分镜被删除但顺序未更新，需要重建顺序
         if len(all_shots) != len(shots_order):
             logger.info("分镜数量与顺序不一致，将重建顺序")
-            shots_order = rebuild_shots_order(db, all_shots, user_id)
+            shots_order = rebuild_shots_order(db, all_shots, user_id, project_id)
         
         # 创建ID到分镜对象的映射字典
         shot_dict = {str(shot.shot_id): shot for shot in all_shots}
@@ -92,7 +100,7 @@ def get_ordered_shots(db: Session, user_id: int):
         
         # 如果有分镜被移除，更新数据库中的顺序
         if len(ordered_shots) != len(shots_order):
-            user_shot = get_user_shots_order(db, user_id)
+            user_shot = get_user_shots_order(db, user_id, project_id)
             user_shot.shots_order = {str(shot.shot_id): shot.order for shot in ordered_shots}
             db.commit()
         
@@ -106,7 +114,7 @@ def get_ordered_shots(db: Session, user_id: int):
         return []
 
 
-def rebuild_shots_order(db: Session, shots, user_id:int):
+def rebuild_shots_order(db: Session, shots, user_id:int, project_id:int=None):
     """
     重建用户分镜顺序，根据分镜的更新时间排序
     
@@ -114,11 +122,12 @@ def rebuild_shots_order(db: Session, shots, user_id:int):
         db: 数据库会话
         shots: 分镜列表（应该只包含当前用户的分镜）
         user_id: 用户ID
+        project_id: 项目ID，可选
         
     Returns:
         更新后的顺序字典
     """
-    logger.info(f"正在为用户 {user_id} 重建分镜顺序，共 {len(shots)} 个分镜")
+    logger.info(f"正在为用户 {user_id} 项目 {project_id if project_id else '默认'} 重建分镜顺序，共 {len(shots)} 个分镜")
     
     try:
         # 根据更新时间排序分镜
@@ -130,7 +139,7 @@ def rebuild_shots_order(db: Session, shots, user_id:int):
             new_order[str(shot.shot_id)] = i + 1
         
         # 获取用户分镜顺序记录
-        user_shot = get_user_shots_order(db, user_id)
+        user_shot = get_user_shots_order(db, user_id, project_id)
         
         # 更新顺序
         user_shot.shots_order = new_order
@@ -144,7 +153,7 @@ def rebuild_shots_order(db: Session, shots, user_id:int):
         log_exception(logger, f"重建分镜顺序失败: {str(e)}")
         raise HTTPException(status_code=500, detail="重建分镜顺序失败")
 
-def add_shot_to_order(db: Session, shot_id: int, position: str = "end", reference_shot_id: int = None, user_id:int=None):
+def add_shot_to_order(db: Session, shot_id: int, position: str = "end", reference_shot_id: int = None, user_id:int=None, project_id:int=None):
     """
     将分镜添加到用户顺序中
     
@@ -153,16 +162,17 @@ def add_shot_to_order(db: Session, shot_id: int, position: str = "end", referenc
         shot_id: 要添加的分镜ID
         position: 添加位置("end", "above", "below")
         reference_shot_id: 参考分镜ID（如果position不是"end"）
-        user_id: 用户ID，默认为1
+        user_id: 用户ID
+        project_id: 项目ID，可选
         
     Returns:
         更新后的顺序字典
     """
-    logger.info(f"正在将分镜 {shot_id} 添加到用户 {user_id} 的顺序中，位置: {position}")
+    logger.info(f"正在将分镜 {shot_id} 添加到用户 {user_id} 项目 {project_id if project_id else '默认'} 的顺序中，位置: {position}")
     
     try:
         # 获取用户分镜顺序
-        user_shot = get_user_shots_order(db, user_id)
+        user_shot = get_user_shots_order(db, user_id, project_id)
         shots_order = user_shot.shots_order.copy()
         
         # 如果顺序为空，直接添加为第一个
@@ -218,23 +228,24 @@ def add_shot_to_order(db: Session, shot_id: int, position: str = "end", referenc
         log_exception(logger, f"添加分镜到顺序失败: {str(e)}")
         raise HTTPException(status_code=500, detail="添加分镜到顺序失败")
 
-def remove_shot_from_order(db: Session, shot_id: int, user_id: int):
+def remove_shot_from_order(db: Session, shot_id: int, user_id: int, project_id:int=None):
     """
     从用户顺序中移除分镜
     
     Args:
         db: 数据库会话
         shot_id: 要移除的分镜ID
-        user_id: 用户ID，默认为1
+        user_id: 用户ID
+        project_id: 项目ID，可选
         
     Returns:
         更新后的顺序字典
     """
-    logger.info(f"正在从用户 {user_id} 的顺序中移除分镜 {shot_id}")
+    logger.info(f"正在从用户 {user_id} 项目 {project_id if project_id else '默认'} 的顺序中移除分镜 {shot_id}")
     
     try:
         # 获取用户分镜顺序
-        user_shot = get_user_shots_order(db, user_id)
+        user_shot = get_user_shots_order(db, user_id, project_id)
         shots_order = user_shot.shots_order.copy()
         
         shot_id_str = str(shot_id)
@@ -265,7 +276,7 @@ def remove_shot_from_order(db: Session, shot_id: int, user_id: int):
         log_exception(logger, f"从顺序中移除分镜失败: {str(e)}")
         raise HTTPException(status_code=500, detail="从顺序中移除分镜失败")
 
-def set_shot_order(db: Session, shot_order_mapping: dict, user_id: int):
+def set_shot_order(db: Session, shot_order_mapping: dict, user_id: int, project_id:int=None):
     """
     直接设置用户分镜顺序
     
@@ -273,21 +284,22 @@ def set_shot_order(db: Session, shot_order_mapping: dict, user_id: int):
         db: 数据库会话
         shot_order_mapping: 分镜ID到顺序的映射字典，形如 {"1": 1, "2": 2, ...}
         user_id: 用户ID
+        project_id: 项目ID，可选
         
     Returns:
         更新后的顺序字典
     """
-    logger.info(f"正在为用户 {user_id} 设置分镜顺序，共 {len(shot_order_mapping)} 个分镜")
+    logger.info(f"正在为用户 {user_id} 项目 {project_id if project_id else '默认'} 设置分镜顺序，共 {len(shot_order_mapping)} 个分镜")
     
     try:
         # 获取用户分镜顺序
-        user_shot = get_user_shots_order(db, user_id)
+        user_shot = get_user_shots_order(db, user_id, project_id)
         
         # 直接设置新的顺序
         user_shot.shots_order = shot_order_mapping
         db.commit()
         
-        logger.info(f"成功设置用户 {user_id} 的分镜顺序，共 {len(shot_order_mapping)} 个分镜")
+        logger.info(f"成功设置用户 {user_id} 项目 {project_id if project_id else '默认'} 的分镜顺序，共 {len(shot_order_mapping)} 个分镜")
         return shot_order_mapping
         
     except Exception as e:

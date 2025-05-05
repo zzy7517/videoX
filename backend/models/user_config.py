@@ -10,7 +10,6 @@ class UserConfig(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=True, index=True)
-    content = Column(String, nullable=True)  # 允许为空
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     global_comfyui_payload = Column(JSON, nullable=True)  # 存储ComfyUI自定义工作流
