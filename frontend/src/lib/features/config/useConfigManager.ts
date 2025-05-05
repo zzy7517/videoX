@@ -3,6 +3,70 @@ import {
   loadTextContent as apiLoadTextContent,
   saveTextContent as apiSaveTextContent
 } from './configApi';
+import { resetLLMClientCache } from '../shot/useShotManager';
+
+/**
+ * 验证Groq API密钥
+ * @param apiKey Groq API密钥
+ * @returns 返回验证结果和可能的错误信息
+ */
+const validateGroqApiKeyHelper = async (apiKey: string): Promise<{valid: boolean; error?: string}> => {
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/models', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      return { 
+        valid: false, 
+        error: error.error?.message || `API验证失败：状态码 ${response.status}` 
+      };
+    }
+    
+    return { valid: true };
+  } catch (error) {
+    return { 
+      valid: false, 
+      error: error instanceof Error ? error.message : '验证Groq API密钥时发生未知错误' 
+    };
+  }
+};
+
+/**
+ * 验证硅基流动API密钥
+ * @param apiKey 硅基流动API密钥
+ * @returns 返回验证结果和可能的错误信息
+ */
+const validateSiliconFlowApiKeyHelper = async (apiKey: string): Promise<{valid: boolean; error?: string}> => {
+  try {
+    const response = await fetch('https://api.siliconflow.cn/v1/models', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`
+      }
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      return { 
+        valid: false, 
+        error: error.error?.message || `API验证失败：状态码 ${response.status}` 
+      };
+    }
+    
+    return { valid: true };
+  } catch (error) {
+    return { 
+      valid: false, 
+      error: error instanceof Error ? error.message : '验证硅基流动API密钥时发生未知错误' 
+    };
+  }
+};
 
 /**
  * 文本管理自定义 Hook
@@ -23,6 +87,14 @@ export const useTextManager = () => {
   const [groqApiKey, setGroqApiKey] = useState<string | null>(null);
   const [groqModels, setGroqModels] = useState<string | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
+  
+  // API验证状态
+  const [isValidatingGroq, setIsValidatingGroq] = useState(false);
+  const [isValidatingSiliconFlow, setIsValidatingSiliconFlow] = useState(false);
+  const [groqKeyValid, setGroqKeyValid] = useState(false);
+  const [groqKeyInvalid, setGroqKeyInvalid] = useState(false);
+  const [siliconFlowKeyValid, setSiliconFlowKeyValid] = useState(false);
+  const [siliconFlowKeyInvalid, setSiliconFlowKeyInvalid] = useState(false);
   
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -98,17 +170,120 @@ export const useTextManager = () => {
   }, [clearError]);
 
   /**
+   * 验证 Groq API密钥
+   */
+  const validateGroqApiKey = useCallback(async (apiKey: string): Promise<boolean> => {
+    if (!apiKey.trim()) {
+      setError("请输入Groq API密钥");
+      return false;
+    }
+    
+    setIsValidatingGroq(true);
+    setError("");
+    
+    try {
+      const result = await validateGroqApiKeyHelper(apiKey);
+      
+      if (result.valid) {
+        setMessage("Groq API密钥验证成功");
+        setGroqKeyValid(true);
+        setGroqKeyInvalid(false);
+        clearMessage();
+        return true;
+      } else {
+        setError(`Groq API密钥验证失败: ${result.error}`);
+        setGroqKeyValid(false);
+        setGroqKeyInvalid(true);
+        return false;
+      }
+    } catch (error) {
+      console.error("验证Groq API密钥失败:", error);
+      const errorMsg = error instanceof Error ? error.message : "验证Groq API密钥时发生未知错误";
+      setError(errorMsg);
+      setGroqKeyValid(false);
+      setGroqKeyInvalid(true);
+      return false;
+    } finally {
+      setIsValidatingGroq(false);
+    }
+  }, [clearMessage]);
+  
+  /**
+   * 验证硅基流动API密钥
+   */
+  const validateSiliconFlowApiKey = useCallback(async (apiKey: string): Promise<boolean> => {
+    if (!apiKey.trim()) {
+      setError("请输入硅基流动API密钥");
+      return false;
+    }
+    
+    setIsValidatingSiliconFlow(true);
+    setError("");
+    
+    try {
+      const result = await validateSiliconFlowApiKeyHelper(apiKey);
+      
+      if (result.valid) {
+        setMessage("硅基流动API密钥验证成功");
+        setSiliconFlowKeyValid(true);
+        setSiliconFlowKeyInvalid(false);
+        clearMessage();
+        return true;
+      } else {
+        setError(`硅基流动API密钥验证失败: ${result.error}`);
+        setSiliconFlowKeyValid(false);
+        setSiliconFlowKeyInvalid(true);
+        return false;
+      }
+    } catch (error) {
+      console.error("验证硅基流动API密钥失败:", error);
+      const errorMsg = error instanceof Error ? error.message : "验证硅基流动API密钥时发生未知错误";
+      setError(errorMsg);
+      setSiliconFlowKeyValid(false);
+      setSiliconFlowKeyInvalid(true);
+      return false;
+    } finally {
+      setIsValidatingSiliconFlow(false);
+    }
+  }, [clearMessage]);
+
+
+  /**
    * 保存文本内容到服务器
    */
   const saveTextContent = useCallback(async () => {
     setIsSaving(true);
     setError("");
     setMessage("");
+    
+    // 检查并验证API密钥
+    let groqKeyIsValid = groqKeyValid;
+    let siliconFlowKeyIsValid = siliconFlowKeyValid;
+    
+    // 如果有填写API密钥但未验证通过，则自动尝试验证
+    if (groqApiKey && !groqKeyValid && !groqKeyInvalid) {
+      try {
+        groqKeyIsValid = await validateGroqApiKey(groqApiKey);
+      } catch (error) {
+        console.error("自动验证Groq API密钥失败:", error);
+        groqKeyIsValid = false;
+      }
+    }
+    
+    if (siliconFlowApiKey && !siliconFlowKeyValid && !siliconFlowKeyInvalid) {
+      try {
+        siliconFlowKeyIsValid = await validateSiliconFlowApiKey(siliconFlowApiKey);
+      } catch (error) {
+        console.error("自动验证硅基流动API密钥失败:", error);
+        siliconFlowKeyIsValid = false;
+      }
+    }
+    
     try {
       await apiSaveTextContent(
         inputText,
         comfyuiConfig || undefined,
-        comfyuiUrl || undefined,
+        comfyuiUrl,
         openaiUrl || undefined,
         openaiApiKey || undefined,
         model || undefined,
@@ -120,6 +295,11 @@ export const useTextManager = () => {
       );
       setMessage("保存成功");
       clearMessage();
+      
+      // 保存成功后重置LLM客户端缓存，确保使用最新的API密钥
+      resetLLMClientCache();
+      
+      return true;
     } catch (error) {
       console.error("保存文本内容失败:", error);
       const errorMsg = error instanceof Error ? error.message : "无法保存文本内容";
@@ -141,6 +321,12 @@ export const useTextManager = () => {
     groqApiKey, 
     groqModels, 
     systemPrompt,
+    groqKeyValid,
+    siliconFlowKeyValid,
+    groqKeyInvalid,
+    siliconFlowKeyInvalid,
+    validateGroqApiKey,
+    validateSiliconFlowApiKey,
     clearMessage, 
     clearError
   ]);
@@ -185,7 +371,14 @@ export const useTextManager = () => {
    */
   const updateSiliconFlowApiKey = useCallback((key: string) => {
     setSiliconFlowApiKey(key);
-  }, []);
+    // 清除验证状态
+    if (siliconFlowApiKey !== key) {
+      setSiliconFlowKeyValid(false);
+      setSiliconFlowKeyInvalid(false);
+      // 重置LLM客户端缓存
+      resetLLMClientCache('siliconflow');
+    }
+  }, [siliconFlowApiKey]);
   
   /**
    * 更新硅基流动模型列表
@@ -199,7 +392,14 @@ export const useTextManager = () => {
    */
   const updateGroqApiKey = useCallback((key: string) => {
     setGroqApiKey(key);
-  }, []);
+    // 清除验证状态
+    if (groqApiKey !== key) {
+      setGroqKeyValid(false);
+      setGroqKeyInvalid(false);
+      // 重置LLM客户端缓存
+      resetLLMClientCache('groq');
+    }
+  }, [groqApiKey]);
   
   /**
    * 更新 Groq 模型列表
@@ -281,6 +481,12 @@ export const useTextManager = () => {
     systemPrompt,
     isLoading,
     isSaving,
+    isValidatingGroq,
+    isValidatingSiliconFlow,
+    groqKeyValid,
+    groqKeyInvalid,
+    siliconFlowKeyValid,
+    siliconFlowKeyInvalid,
     error,
     message,
     
@@ -295,6 +501,8 @@ export const useTextManager = () => {
     updateModel,
     resetTextState,
     saveComfyuiConfig,
+    validateGroqApiKey,
+    validateSiliconFlowApiKey,
     
     // T2I Copilot相关的状态和方法
     updateSiliconFlowApiKey,

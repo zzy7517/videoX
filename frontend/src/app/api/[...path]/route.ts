@@ -7,9 +7,10 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const path = params.path.join('/');
+  const { path } = await params;
+  const pathString = path.join('/');
   const url = new URL(request.url);
   const queryString = url.search;
 
@@ -17,7 +18,7 @@ export async function GET(
   const authHeader = request.headers.get('Authorization');
   
   // 构建API URL
-  const apiUrl = `http://localhost:8000/${path}${queryString}`;
+  const apiUrl = `http://localhost:8000/${pathString}${queryString}`;
   
   // 复制请求头，添加认证头
   const headers = new Headers();
@@ -46,7 +47,7 @@ export async function GET(
     
     return newResponse;
   } catch (error) {
-    console.error(`API代理错误 (GET ${path}):`, error);
+    console.error(`API代理错误 (GET ${pathString}):`, error);
     return new NextResponse(JSON.stringify({ error: '代理请求失败' }), {
       status: 500,
       headers: {
@@ -62,16 +63,17 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const path = params.path.join('/');
+  const { path } = await params;
+  const pathString = path.join('/');
   
   // 从请求中获取认证头和请求体
   const authHeader = request.headers.get('Authorization');
   const body = await request.text();
   
   // 构建API URL
-  const apiUrl = `http://localhost:8000/${path}`;
+  const apiUrl = `http://localhost:8000/${pathString}`;
   
   // 复制请求头，添加认证头
   const headers = new Headers({
@@ -104,7 +106,7 @@ export async function POST(
     
     return newResponse;
   } catch (error) {
-    console.error(`API代理错误 (POST ${path}):`, error);
+    console.error(`API代理错误 (POST ${pathString}):`, error);
     return new NextResponse(JSON.stringify({ error: '代理请求失败' }), {
       status: 500,
       headers: {
@@ -120,16 +122,17 @@ export async function POST(
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const path = params.path.join('/');
+  const { path } = await params;
+  const pathString = path.join('/');
   
   // 从请求中获取认证头和请求体
   const authHeader = request.headers.get('Authorization');
   const body = await request.text();
   
   // 构建API URL
-  const apiUrl = `http://localhost:8000/${path}`;
+  const apiUrl = `http://localhost:8000/${pathString}`;
   
   // 复制请求头，添加认证头
   const headers = new Headers({
@@ -162,7 +165,7 @@ export async function PUT(
     
     return newResponse;
   } catch (error) {
-    console.error(`API代理错误 (PUT ${path}):`, error);
+    console.error(`API代理错误 (PUT ${pathString}):`, error);
     return new NextResponse(JSON.stringify({ error: '代理请求失败' }), {
       status: 500,
       headers: {
@@ -178,15 +181,16 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const path = params.path.join('/');
+  const { path } = await params;
+  const pathString = path.join('/');
   
   // 从请求中获取认证头
   const authHeader = request.headers.get('Authorization');
   
   // 构建API URL
-  const apiUrl = `http://localhost:8000/${path}`;
+  const apiUrl = `http://localhost:8000/${pathString}`;
   
   // 复制请求头，添加认证头
   const headers = new Headers();
@@ -216,7 +220,7 @@ export async function DELETE(
     
     return newResponse;
   } catch (error) {
-    console.error(`API代理错误 (DELETE ${path}):`, error);
+    console.error(`API代理错误 (DELETE ${pathString}):`, error);
     return new NextResponse(JSON.stringify({ error: '代理请求失败' }), {
       status: 500,
       headers: {
@@ -232,7 +236,7 @@ export async function DELETE(
  */
 export async function OPTIONS(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
   // 返回CORS预检响应
   return new NextResponse(null, {

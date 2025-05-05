@@ -111,11 +111,20 @@ function MainContent() {
     groqModels,
     updateGroqModels,
     systemPrompt,
-    updateSystemPrompt
+    updateSystemPrompt,
+    isValidatingGroq,
+    validateGroqApiKey,
+    isValidatingSiliconFlow,
+    validateSiliconFlowApiKey,
+    siliconFlowKeyValid,
+    siliconFlowKeyInvalid,
+    groqKeyValid,
+    groqKeyInvalid
   } = useTextManager();
 
   // === UI 状态 ===
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [saveButtonClicked, setSaveButtonClicked] = useState(false);
 
   /**
    * 将输入文本分割为分镜并导入
@@ -345,6 +354,7 @@ function MainContent() {
                             <label htmlFor="silicon-flow-apikey" className="block text-sm font-medium">
                               API Key
                             </label>
+                            <div className="flex gap-2 items-center">
                             <input
                               id="silicon-flow-apikey"
                               type="password"
@@ -354,6 +364,30 @@ function MainContent() {
                               className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
                               disabled={isBulkUpdating || isLoading || isSaving}
                             />
+                              {siliconFlowApiKey && (
+                                <div className="flex gap-2 items-center">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => validateSiliconFlowApiKey(siliconFlowApiKey)}
+                                    disabled={isValidatingSiliconFlow || isSaving || isBulkUpdating || isLoading}
+                                    className="flex-shrink-0 text-xs h-auto py-2"
+                                  >
+                                    {isValidatingSiliconFlow ? "验证中..." : "验证"}
+                                  </Button>
+                                  {siliconFlowKeyValid && (
+                                    <svg className="text-green-500 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                  {siliconFlowKeyInvalid && (
+                                    <svg className="text-red-500 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           
                           {/* 硅基流动模型列表 */}
@@ -381,6 +415,7 @@ function MainContent() {
                             <label htmlFor="groq-apikey" className="block text-sm font-medium">
                               API Key
                             </label>
+                            <div className="flex gap-2 items-center">
                             <input
                               id="groq-apikey"
                               type="password"
@@ -390,6 +425,30 @@ function MainContent() {
                               className="w-full px-3 py-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm"
                               disabled={isBulkUpdating || isLoading || isSaving}
                             />
+                              {groqApiKey && (
+                                <div className="flex gap-2 items-center">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => validateGroqApiKey(groqApiKey)}
+                                    disabled={isValidatingGroq || isSaving || isBulkUpdating || isLoading}
+                                    className="flex-shrink-0 text-xs h-auto py-2"
+                                  >
+                                    {isValidatingGroq ? "验证中..." : "验证"}
+                                  </Button>
+                                  {groqKeyValid && (
+                                    <svg className="text-green-500 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                  {groqKeyInvalid && (
+                                    <svg className="text-red-500 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           
                           {/* Groq 模型列表 */}
@@ -417,15 +476,53 @@ function MainContent() {
                       </TabsContent>
                     </div>
                   </Tabs>
-                  <DialogFooter className="flex flex-wrap gap-3 justify-end mt-6 pt-4 border-t">
+                  <DialogFooter className="flex flex-wrap gap-3 justify-end mt-6 pt-4 border-t relative">
                       <Button
                           variant="outline"
-                          onClick={saveTextContent}
-                          disabled={isSaving || isBulkUpdating || isLoading}
+                          onClick={() => {
+                            // 检查是否有未验证或验证失败的API密钥
+                            if (
+                              (groqApiKey && (!groqKeyValid && !groqKeyInvalid)) || // 有API但未验证
+                              (siliconFlowApiKey && (!siliconFlowKeyValid && !siliconFlowKeyInvalid)) || // 有API但未验证
+                              (groqApiKey && groqKeyInvalid) || // API验证失败
+                              (siliconFlowApiKey && siliconFlowKeyInvalid) // API验证失败
+                            ) {
+                              setSaveButtonClicked(true);
+                              // 3秒后隐藏点击状态
+                              setTimeout(() => setSaveButtonClicked(false), 3000);
+                            } else {
+                              saveTextContent();
+                              setSaveButtonClicked(false);
+                            }
+                          }}
+                          disabled={isSaving || isBulkUpdating || isLoading || isValidatingGroq || isValidatingSiliconFlow}
                           className="hover:bg-slate-100 dark:hover:bg-slate-700"
                       >
                           {isSaving ? "保存中..." : "保存设置"}
                       </Button>
+                      {(
+                        // 有未验证或验证失败的API密钥
+                        (
+                          (groqApiKey && (!groqKeyValid && !groqKeyInvalid)) || // 有API但未验证
+                          (siliconFlowApiKey && (!siliconFlowKeyValid && !siliconFlowKeyInvalid)) || // 有API但未验证
+                          (groqApiKey && groqKeyInvalid) || // API验证失败 
+                          (siliconFlowApiKey && siliconFlowKeyInvalid) // API验证失败
+                        ) && saveButtonClicked
+                      ) && (
+                        <div className="absolute bottom-full right-0 mb-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded text-sm max-w-xs shadow-md opacity-100 transition-opacity duration-300 ease-in-out z-50">
+                          <div className="flex items-center">
+                            <svg className="w-5 h-5 mr-2 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            {
+                              ((groqApiKey && (!groqKeyValid && !groqKeyInvalid)) || (siliconFlowApiKey && (!siliconFlowKeyValid && !siliconFlowKeyInvalid)))
+                                ? "有未验证的API密钥，请先验证所有API密钥"
+                                : "有API密钥验证失败，请先验证所有API密钥或移除它们"
+                            }
+                          </div>
+                          <div className="absolute w-2 h-2 bg-red-100 transform rotate-45 -bottom-1 right-5 border-b border-r border-red-400"></div>
+                        </div>
+                      )}
                   </DialogFooter>
                 </DialogContent>
               </Dialog>

@@ -9,12 +9,47 @@ import {
   deleteAllShots as apiDeleteAllShots,
   replaceShotsFromText as apiReplaceShotsFromText
 } from './shotApi';
+import { createLLMService, Message, LLMService } from '../llm';
+import { fetchWithAuth } from '@/lib/utils';
 
 export interface ShotMessage {
   id: number;
   message: string;
   type: 'success' | 'error';
 }
+
+// 存储当前使用的模型索引
+const modelIndexes = {
+  current: 0,  // 当前要使用哪个API
+  groq: 0,     // Groq模型列表索引
+  siliconflow: 0 // 硅基流动模型列表索引
+};
+
+// 缓存LLM客户端，避免重复创建
+const llmClientCache = {
+  groq: null as LLMService | null,
+  siliconflow: null as LLMService | null,
+  groqApiKey: "",
+  siliconflowApiKey: ""
+};
+
+/**
+ * 重置LLM客户端缓存
+ * 应在更新API密钥设置时调用
+ */
+export const resetLLMClientCache = (provider?: 'groq' | 'siliconflow') => {
+  if (!provider || provider === 'groq') {
+    console.log('重置Groq LLM客户端缓存');
+    llmClientCache.groq = null;
+    llmClientCache.groqApiKey = "";
+  }
+  
+  if (!provider || provider === 'siliconflow') {
+    console.log('重置硅基流动LLM客户端缓存');
+    llmClientCache.siliconflow = null;
+    llmClientCache.siliconflowApiKey = "";
+  }
+};
 
 /**
  * 分镜管理自定义 Hook
@@ -136,13 +171,237 @@ export const useShotManager = () => {
   }, [shots]); // 添加 shots 依赖
 
   /**
+   * 获取或创建LLM客户端
+   */
+  const getLLMClient = useCallback((provider: 'groq' | 'siliconflow', apiKey: string): LLMService => {
+    // 检查是否需要重新创建客户端（API密钥变更）
+    if (provider === 'groq') {
+      if (!llmClientCache.groq || llmClientCache.groqApiKey !== apiKey) {
+        console.log("创建新的Groq LLM客户端");
+        llmClientCache.groq = createLLMService(apiKey, undefined);
+        llmClientCache.groqApiKey = apiKey;
+      }
+      return llmClientCache.groq;
+    } else {
+      if (!llmClientCache.siliconflow || llmClientCache.siliconflowApiKey !== apiKey) {
+        console.log("创建新的硅基流动LLM客户端");
+        llmClientCache.siliconflow = createLLMService(undefined, apiKey);
+        llmClientCache.siliconflowApiKey = apiKey;
+      }
+      return llmClientCache.siliconflow;
+    }
+  }, []);
+
+  /**
    * 保存单个分镜内容到后端
    */
   const saveShot = useCallback(async (id: number, shotData: Partial<Pick<Shot, 'content' | 't2i_prompt'>>) => {
     setShotMessage({ id, message: "保存中...", type: 'success' });
 
     try {
+      // 查找当前分镜完整数据
+      const currentShot = shots.find(s => s.shot_id === id);
+      
+      // 确定是否需要生成文生图提示词
+      let shouldGeneratePrompt = false;
+      
+      // 修改判断逻辑：
+      // 1. 如果内容有更新且当前提示词为空或未定义，生成新提示词
+      // 2. 如果用户明确删除了提示词（shotData中有t2i_prompt字段但值为空），则不重新生成
+      if (shotData.content && 
+         ((!currentShot?.t2i_prompt || currentShot.t2i_prompt === "") && 
+          // 检查shotData是否包含t2i_prompt字段但值为空（用户主动删除）
+          !('t2i_prompt' in shotData && !shotData.t2i_prompt) ||
+          // 内容变更且没有明确设置提示词
+          (shotData.content !== currentShot?.content && !('t2i_prompt' in shotData)))) {
+        shouldGeneratePrompt = true;
+      }
+      
+      if (shouldGeneratePrompt) {
+        console.log("需要生成文生图提示词");
+      } else {
+        console.log("跳过生成文生图提示词：", 
+          'shotData包含t2i_prompt字段:', 't2i_prompt' in shotData,
+          '提示词值:', shotData.t2i_prompt);
+      }
+      
+      // 如果需要生成提示词
+      if (shouldGeneratePrompt) {
+        // 查询是否配置了LLM设置
+        const textResponse = await fetchWithAuth('/api/text/');
+        const textData = await textResponse.json();
+        const t2iCopilot = textData.t2i_copilot || {};
+        
+        // 检查是否有内容更新，且系统提示词配置了
+        if (shotData.content && t2iCopilot.system_prompt) {
+          console.log("T2I Copilot配置:", {
+            hasGroq: !!(t2iCopilot.groq_api_key && t2iCopilot.groq_models),
+            hasSiliconFlow: !!(t2iCopilot.silicon_flow_api_key && t2iCopilot.silicon_flow_models),
+            systemPrompt: !!t2iCopilot.system_prompt
+          });
+          
+          // 准备转换消息
+          const messages: Message[] = [
+            { role: 'system', content: t2iCopilot.system_prompt },
+            { role: 'user', content: shotData.content }
+          ];
+          
+          let t2iPrompt: string | null = null;
+          
+          // 检查可用的API组合
+          const hasGroq = !!(t2iCopilot.groq_api_key && t2iCopilot.groq_models);
+          const hasSiliconFlow = !!(t2iCopilot.silicon_flow_api_key && t2iCopilot.silicon_flow_models);
+          
+          // 只有当两者都可用时才轮流使用
+          if (hasGroq && hasSiliconFlow) {
+            // 轮流使用Groq和硅基流动
+            try {
+              // 0: Groq, 1: 硅基流动
+              if (modelIndexes.current === 0) {
+                console.log("轮流模式: 本次使用Groq");
+                // 尝试使用Groq
+                const groqModels = t2iCopilot.groq_models!.split('\n').filter((m: string) => m.trim());
+                
+                if (groqModels.length > 0) {
+                  if (modelIndexes.groq >= groqModels.length) {
+                    modelIndexes.groq = 0;
+                  }
+                  
+                  const currentModel = groqModels[modelIndexes.groq];
+                  console.log(`使用Groq模型 ${currentModel} (索引: ${modelIndexes.groq}/${groqModels.length - 1})`);
+                  
+                  // 确保API Key存在并且非空
+                  if (t2iCopilot.groq_api_key && t2iCopilot.groq_api_key.trim()) {
+                    // 获取或创建客户端
+                    const llmService = getLLMClient('groq', t2iCopilot.groq_api_key);
+                    t2iPrompt = await llmService.chat(messages, currentModel, 'groq');
+                    
+                    // 更新Groq索引和当前提供商
+                    modelIndexes.groq = (modelIndexes.groq + 1) % groqModels.length;
+                    modelIndexes.current = 1; // 下次使用硅基流动
+                    
+                    console.log('使用Groq生成文生图提示词:', t2iPrompt);
+                  } else {
+                    console.error("Groq API Key为空或未定义");
+                    modelIndexes.current = 1; // 尝试使用硅基流动
+                  }
+                }
+              } else {
+                console.log("轮流模式: 本次使用硅基流动");
+                // 尝试使用硅基流动
+                const siliconModels = t2iCopilot.silicon_flow_models!.split('\n').filter((m: string) => m.trim());
+                
+                if (siliconModels.length > 0) {
+                  if (modelIndexes.siliconflow >= siliconModels.length) {
+                    modelIndexes.siliconflow = 0;
+                  }
+                  
+                  const currentModel = siliconModels[modelIndexes.siliconflow];
+                  console.log(`使用硅基流动模型 ${currentModel} (索引: ${modelIndexes.siliconflow}/${siliconModels.length - 1})`);
+                  
+                  // 确保API Key存在并且非空
+                  if (t2iCopilot.silicon_flow_api_key && t2iCopilot.silicon_flow_api_key.trim()) {
+                    // 获取或创建客户端
+                    const llmService = getLLMClient('siliconflow', t2iCopilot.silicon_flow_api_key);
+                    t2iPrompt = await llmService.chat(messages, currentModel, 'siliconflow');
+                    
+                    // 更新硅基流动索引和当前提供商
+                    modelIndexes.siliconflow = (modelIndexes.siliconflow + 1) % siliconModels.length;
+                    modelIndexes.current = 0; // 下次使用Groq
+                    
+                    console.log('使用硅基流动生成文生图提示词:', t2iPrompt);
+                  } else {
+                    console.error("硅基流动API Key为空或未定义");
+                    modelIndexes.current = 0; // 尝试使用Groq
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('轮流模式生成提示词失败:', error);
+            }
+          }
+          // 仅有Groq可用
+          else if (hasGroq) {
+            try {
+              console.log("仅Groq模式: 尝试使用Groq API");
+              const groqModels = t2iCopilot.groq_models!.split('\n').filter((m: string) => m.trim());
+              
+              if (groqModels.length > 0) {
+                if (modelIndexes.groq >= groqModels.length) {
+                  modelIndexes.groq = 0;
+                }
+                
+                const currentModel = groqModels[modelIndexes.groq];
+                modelIndexes.groq = (modelIndexes.groq + 1) % groqModels.length;
+                
+                console.log(`使用Groq模型 ${currentModel} (索引: ${modelIndexes.groq - 1}/${groqModels.length - 1})`);
+                
+                // 确保API Key存在并且非空
+                if (t2iCopilot.groq_api_key && t2iCopilot.groq_api_key.trim()) {
+                  // 获取或创建客户端
+                  const llmService = getLLMClient('groq', t2iCopilot.groq_api_key);
+                  t2iPrompt = await llmService.chat(messages, currentModel, 'groq');
+                  
+                  console.log('使用Groq生成文生图提示词:', t2iPrompt);
+                } else {
+                  console.error("Groq API Key为空或未定义");
+                }
+              }
+            } catch (error) {
+              console.error('Groq生成提示词失败:', error);
+            }
+          }
+          // 仅有硅基流动可用
+          else if (hasSiliconFlow) {
+            try {
+              console.log("仅硅基流动模式: 尝试使用硅基流动API");
+              const siliconModels = t2iCopilot.silicon_flow_models!.split('\n').filter((m: string) => m.trim());
+              
+              if (siliconModels.length > 0) {
+                if (modelIndexes.siliconflow >= siliconModels.length) {
+                  modelIndexes.siliconflow = 0;
+                }
+                
+                const currentModel = siliconModels[modelIndexes.siliconflow];
+                modelIndexes.siliconflow = (modelIndexes.siliconflow + 1) % siliconModels.length;
+                
+                console.log(`使用硅基流动模型 ${currentModel} (索引: ${modelIndexes.siliconflow - 1}/${siliconModels.length - 1})`);
+                
+                // 确保API Key存在并且非空
+                if (t2iCopilot.silicon_flow_api_key && t2iCopilot.silicon_flow_api_key.trim()) {
+                  // 获取或创建客户端
+                  const llmService = getLLMClient('siliconflow', t2iCopilot.silicon_flow_api_key);
+                  t2iPrompt = await llmService.chat(messages, currentModel, 'siliconflow');
+                  
+                  console.log('使用硅基流动生成文生图提示词:', t2iPrompt);
+                } else {
+                  console.error("硅基流动API Key为空或未定义");
+                }
+              }
+            } catch (error) {
+              console.error('硅基流动生成提示词失败:', error);
+            }
+          }
+          
+          // 如果有生成的提示词，更新数据
+          if (t2iPrompt) {
+            shotData.t2i_prompt = t2iPrompt;
+          }
+        }
+      } else {
+        console.log("跳过生成文生图提示词：提示词已存在或内容未变更");
+      }
+
       await apiSaveShot(id, shotData); // 传递对象给 apiSaveShot
+
+      // 更新本地状态，使生成的提示词显示在UI上
+      setShots(prev => 
+        prev.map(shot => 
+          shot.shot_id === id 
+            ? { ...shot, ...shotData } 
+            : shot
+        )
+      );
 
       // 显示成功消息
       setShotMessage({ id, message: "已保存", type: 'success' });
@@ -155,7 +414,7 @@ export const useShotManager = () => {
       setTimeout(() => setShotMessage(prev => (prev?.id === id ? null : prev)), 3000);
       throw error;
     }
-  }, []);
+  }, [shots, getLLMClient]);
 
   /**
    * 删除指定 ID 的分镜
