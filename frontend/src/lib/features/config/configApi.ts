@@ -2,14 +2,16 @@
 import { fetchWithAuth } from '@/lib/utils';
 
 /**
- * T2I Copilot配置接口
+ * LLM配置接口
  */
-export interface T2ICopilotConfig {
+export interface LLMConfig {
   silicon_flow_api_key?: string;
   silicon_flow_models?: string;
   groq_api_key?: string;
   groq_models?: string;
-  system_prompt?: string;
+  openai_url?: string;
+  openai_api_key?: string;
+  model?: string;
 }
 
 /**
@@ -19,10 +21,7 @@ export interface TextContent {
   content: string;
   global_comfyui_payload?: Record<string, unknown>;
   comfyui_url?: string;
-  openai_url?: string;
-  openai_api_key?: string;
-  model?: string;
-  t2i_copilot?: T2ICopilotConfig;
+  llm_config?: LLMConfig;
 }
 
 // API 路径
@@ -39,24 +38,30 @@ export const loadTextContent = async (): Promise<TextContent> => {
   }
   const data = await response.json();
   
-  // 处理 t2i_copilot 数据
-  // 如果后端直接返回了t2i_copilot字段，则直接使用
-  // 否则从独立字段中构建（兼容旧版本）
-  const t2iCopilot = data.t2i_copilot || {
-    silicon_flow_api_key: data.silicon_flow_api_key,
-    silicon_flow_models: data.silicon_flow_models,
-    groq_api_key: data.groq_api_key,
-    groq_models: data.groq_models
+  // 处理 llm_config 数据
+  // 兼容处理：从老数据中提取LLM设置到llm_config
+  let llmConfig = data.llm_config || data.t2i_copilot || {
+    silicon_flow_api_key: data.silicon_flow_api_key || undefined,
+    silicon_flow_models: data.silicon_flow_models || undefined,
+    groq_api_key: data.groq_api_key || undefined,
+    groq_models: data.groq_models || undefined
   };
+  
+  // 将独立的OpenAI字段合并到llm_config
+  if (data.openai_url || data.openai_api_key || data.model) {
+    llmConfig = {
+      ...llmConfig,
+      openai_url: data.openai_url || undefined,
+      openai_api_key: data.openai_api_key || undefined,
+      model: data.model || undefined
+    };
+  }
   
   return { 
     content: data.content || "", 
     global_comfyui_payload: data.global_comfyui_payload || null,
     comfyui_url: data.comfyui_url || "",
-    openai_url: data.openai_url || undefined,
-    openai_api_key: data.openai_api_key || undefined,
-    model: data.model || undefined,
-    t2i_copilot: t2iCopilot
+    llm_config: llmConfig
   };
 };
 
@@ -68,6 +73,10 @@ export const loadTextContent = async (): Promise<TextContent> => {
  * @param openai_url OpenAI URL
  * @param openai_api_key OpenAI API Key
  * @param model LLM 模型名称
+ * @param silicon_flow_api_key 硅基流动的API密钥
+ * @param silicon_flow_models 硅基流动的模型列表
+ * @param groq_api_key Groq的API密钥
+ * @param groq_models Groq的模型列表
  */
 export const saveTextContent = async (
   content: string, 
@@ -79,16 +88,17 @@ export const saveTextContent = async (
   silicon_flow_api_key?: string,
   silicon_flow_models?: string,
   groq_api_key?: string,
-  groq_models?: string,
-  system_prompt?: string
+  groq_models?: string
 ): Promise<void> => {
-  // 构建t2i_copilot对象
-  const t2i_copilot: T2ICopilotConfig = {
+  // 构建llm_config对象，包含所有LLM设置
+  const llm_config: LLMConfig = {
     silicon_flow_api_key,
     silicon_flow_models,
     groq_api_key,
     groq_models,
-    system_prompt
+    openai_url,
+    openai_api_key,
+    model
   };
   
   const response = await fetchWithAuth(API_TEXT_URL, {
@@ -97,10 +107,7 @@ export const saveTextContent = async (
       content: content,
       global_comfyui_payload: global_comfyui_payload,
       comfyui_url: comfyui_url,
-      openai_url: openai_url,
-      openai_api_key: openai_api_key,
-      model: model,
-      t2i_copilot: t2i_copilot
+      llm_config: llm_config
     }),
   });
   

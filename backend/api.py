@@ -68,23 +68,24 @@ class BulkUpdateRequest(BaseModel):
     """批量替换所有分镜的请求模型 (用于文本导入)"""
     shots: List[ShotBase] # 要替换成的新分镜列表，现在包含 t2i_prompt
 
-# --- T2I Copilot 配置模型 ---
-class T2ICopilotConfig(BaseModel):
+# --- LLM 配置 ---
+class LLMConfig(BaseModel):
     silicon_flow_api_key: Optional[str] = None
     silicon_flow_models: Optional[str] = None
     groq_api_key: Optional[str] = None
     groq_models: Optional[str] = None
-    system_prompt: Optional[str] = None
+    # 新增 OpenAI 相关字段
+    openai_url: Optional[str] = None  # OpenAI URL
+    openai_api_key: Optional[str] = None # OpenAI API Key
+    model: Optional[str] = None # LLM 模型名称
 
 # --- 文本内容相关模型 ---
 class TextContentBase(BaseModel):
     content: Optional[str] = None
     global_comfyui_payload: Optional[dict] = None
     comfyui_url: Optional[str] = None
-    openai_url: Optional[str] = None  # OpenAI URL
-    openai_api_key: Optional[str] = None # OpenAI API Key
-    model: Optional[str] = None # LLM 模型名称
-    t2i_copilot: Optional[T2ICopilotConfig] = None # T2I Copilot 配置
+    # 移除单独的 LLM 设置字段，全部迁移到 llm_config 内
+    llm_config: Optional[LLMConfig] = None # LLM配置
 
 class ConfigResponse(TextContentBase):
     id: int
@@ -103,14 +104,45 @@ class ConfigResponse(TextContentBase):
             data = {}
             # 基本字段
             for field_name in ["id", "content", "created_at", "updated_at", 
-                          "global_comfyui_payload", "comfyui_url", 
-                          "openai_url", "openai_api_key", "model"]:
+                          "global_comfyui_payload", "comfyui_url"]:
                 if hasattr(obj, field_name):
                     data[field_name] = getattr(obj, field_name)
 
-            # 处理 t2i_copilot 字段，将JSON转换为Pydantic模型
-            if hasattr(obj, "t2i_copilot") and obj.t2i_copilot:
-                data["t2i_copilot"] = T2ICopilotConfig.model_validate(obj.t2i_copilot)
+            # 处理 llm_config 字段，将JSON转换为Pydantic模型
+            if hasattr(obj, "llm_config") and obj.llm_config:
+                llm_config_data = obj.llm_config.copy() if isinstance(obj.llm_config, dict) else obj.llm_config
+                
+                # 如果对象中存在单独的 openai_url, openai_api_key, model 字段，将其合并到 llm_config 中
+                # 这是为了兼容旧版数据模型
+                if hasattr(obj, "openai_url") and obj.openai_url:
+                    if isinstance(llm_config_data, dict):
+                        llm_config_data["openai_url"] = obj.openai_url
+                
+                if hasattr(obj, "openai_api_key") and obj.openai_api_key:
+                    if isinstance(llm_config_data, dict):
+                        llm_config_data["openai_api_key"] = obj.openai_api_key
+                        
+                if hasattr(obj, "model") and obj.model:
+                    if isinstance(llm_config_data, dict):
+                        llm_config_data["model"] = obj.model
+                
+                data["llm_config"] = LLMConfig.model_validate(llm_config_data)
+            # 兼容老的t2i_copilot字段
+            elif hasattr(obj, "t2i_copilot") and obj.t2i_copilot:
+                t2i_copilot_data = obj.t2i_copilot.copy() if isinstance(obj.t2i_copilot, dict) else obj.t2i_copilot
+                data["llm_config"] = LLMConfig.model_validate(t2i_copilot_data)
+            elif any(hasattr(obj, attr) and getattr(obj, attr) for attr in ["openai_url", "openai_api_key", "model"]):
+                # 如果没有 llm_config 但有单独的 LLM 设置字段，创建 llm_config
+                llm_config_data = {}
+                if hasattr(obj, "openai_url") and obj.openai_url:
+                    llm_config_data["openai_url"] = obj.openai_url
+                if hasattr(obj, "openai_api_key") and obj.openai_api_key:
+                    llm_config_data["openai_api_key"] = obj.openai_api_key
+                if hasattr(obj, "model") and obj.model:
+                    llm_config_data["model"] = obj.model
+                
+                if llm_config_data:
+                    data["llm_config"] = LLMConfig.model_validate(llm_config_data)
             
             # 使用父类的 model_validate 方法
             return super().model_validate(data, **kwargs)
@@ -236,8 +268,8 @@ async def get_user_config(request: Request, db: Session = Depends(database.get_d
     logger.info(f"用户 {user_id if user_id else '未登录'} 获取文本配置")
     config = user_config_service.get_user_config(db, user_id)
     
-    # 手动处理 t2i_copilot 字段
-    if hasattr(config, "t2i_copilot") and config.t2i_copilot:
+    # 手动处理 llm_config 字段
+    if hasattr(config, "llm_config") and config.llm_config:
         # 创建响应对象
         response_data = {
             "id": config.id,
@@ -246,34 +278,42 @@ async def get_user_config(request: Request, db: Session = Depends(database.get_d
             "updated_at": config.updated_at,
             "global_comfyui_payload": config.global_comfyui_payload,
             "comfyui_url": config.comfyui_url,
-            "openai_url": config.openai_url,
-            "openai_api_key": config.openai_api_key,
-            "model": config.model,
-            "t2i_copilot": config.t2i_copilot  # 这会在ConfigResponse.model_validate中被处理
+            "llm_config": config.llm_config  # 这会在ConfigResponse.model_validate中被处理
         }
         return ConfigResponse.model_validate(response_data)
-    
     return config
 
 @main_router.put("/text/", response_model=ConfigResponse)
 async def update_user_config(text: TextContentBase, request: Request, db: Session = Depends(database.get_db)):
-    """更新文本内容 (单条记录)"""
+    """更新文本内容和配置"""
     # 获取当前用户
     user = await get_current_user_from_request(request, db)
     user_id = user.user_id if user else None
     
     logger.info(f"用户 {user_id if user_id else '未登录'} 更新文本配置")
-    return user_config_service.update_user_config(
+    
+    # 如果需要，从 llm_config 中提取 OpenAI 相关字段
+    llm_config_data = None
+    if text.llm_config:
+        # 处理 Pydantic 模型
+        if hasattr(text.llm_config, "model_dump"):
+            llm_config_data = text.llm_config.model_dump()
+        elif hasattr(text.llm_config, "dict"):
+            llm_config_data = text.llm_config.dict()
+        else:
+            llm_config_data = text.llm_config
+    
+    # 使用修改后的方法更新用户配置
+    updated_config = user_config_service.update_user_config(
         db,
         text.content,
         text.global_comfyui_payload,
         text.comfyui_url,
-        text.openai_url,
-        text.openai_api_key,
-        text.model,
-        text.t2i_copilot,  # 传递 T2I Copilot 配置
+        llm_config_data,
         user_id
     )
+    
+    return updated_config
 
 # 注册主路由
 app.include_router(main_router)

@@ -29,7 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning={true}>
         <ThemeProvider defaultTheme="system" storageKey="videoX-theme">
           <AuthProvider>
             <div className="min-h-screen flex flex-col">
