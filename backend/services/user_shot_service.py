@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from ..logger import setup_logger, log_exception
 import json
+from datetime import datetime, timezone
 
 # 设置日志
 logger = setup_logger("backend.services.user_shot_service")
@@ -17,33 +18,60 @@ def get_user_shots_order(db: Session, user_id:int, project_id:int=None):
     Args:
         db: 数据库会话
         user_id: 用户ID
-        project_id: 项目ID，可选
+        project_id: 项目ID，必须提供
         
     Returns:
         用户分镜顺序对象
     """
-    logger.info(f"正在获取用户 {user_id} 项目 {project_id if project_id else '默认'} 的分镜顺序")
+    # 如果没有提供project_id，返回400错误
+    if project_id is None:
+        logger.error(f"用户 {user_id} 尝试获取分镜顺序但未提供project_id")
+        raise HTTPException(status_code=400, detail="必须提供项目ID")
+        
+    logger.info(f"正在获取用户 {user_id} 项目 {project_id} 的分镜顺序")
     
-    # 查询用户分镜顺序，如果指定了project_id则加上筛选条件
-    query = db.query(models.UserShot).filter(models.UserShot.user_id == user_id)
-    if project_id is not None:
-        query = query.filter(models.UserShot.project_id == project_id)
+    # 查询用户分镜顺序，使用user_id和project_id进行精确匹配
+    query = db.query(models.UserShot).filter(
+        models.UserShot.user_id == user_id,
+        models.UserShot.project_id == project_id
+    )
     
     user_shot = query.first()
     
     # 如果不存在，创建一个新的空顺序
     if not user_shot:
-        logger.info(f"用户 {user_id} 项目 {project_id if project_id else '默认'} 的分镜顺序记录不存在，将创建新记录")
+        logger.info(f"用户 {user_id} 项目 {project_id} 的分镜顺序记录不存在，将创建新记录")
+        
+        # 先查询数据库中是否存在用户记录
+        user_exists = db.query(models.User).filter(models.User.user_id == user_id).first() is not None
+        if not user_exists:
+            logger.error(f"用户 {user_id} 不存在，无法创建分镜顺序记录")
+            raise HTTPException(status_code=404, detail=f"用户 ID {user_id} 不存在")
+        
         user_shot = models.UserShot(
             user_id=user_id,
             project_id=project_id,
             shots_order={},
-            script={},
+            script="",
             characters={}
         )
         db.add(user_shot)
-        db.commit()
-        db.refresh(user_shot)
+        
+        try:
+            db.flush()  # 先尝试flush确保没有冲突
+            db.commit()
+            db.refresh(user_shot)
+            logger.info(f"已成功创建用户 {user_id} 项目 {project_id} 的分镜顺序记录")
+        except Exception as e:
+            db.rollback()
+            log_exception(logger, f"创建用户分镜顺序记录失败: {str(e)}")
+            # 如果提交失败，可能是因为并发问题，再次尝试获取
+            user_shot = db.query(models.UserShot).filter(
+                models.UserShot.user_id == user_id,
+                models.UserShot.project_id == project_id
+            ).first()
+            if not user_shot:
+                raise HTTPException(status_code=500, detail="创建分镜顺序记录失败")
     
     return user_shot
 
@@ -54,12 +82,17 @@ def get_ordered_shots(db: Session, user_id: int, project_id: int=None):
     Args:
         db: 数据库会话
         user_id: 用户ID
-        project_id: 项目ID，可选
+        project_id: 项目ID，必须提供
         
     Returns:
         按顺序排列的分镜列表
     """
-    logger.info(f"正在获取用户 {user_id} 项目 {project_id if project_id else '默认'} 的所有分镜 (按顺序)")
+    # 如果没有提供project_id，返回400错误
+    if project_id is None:
+        logger.error(f"用户 {user_id} 尝试获取排序分镜但未提供project_id")
+        raise HTTPException(status_code=400, detail="必须提供项目ID")
+    
+    logger.info(f"正在获取用户 {user_id} 项目 {project_id} 的所有分镜 (按顺序)")
     
     try:
         # 获取用户分镜顺序
@@ -68,7 +101,7 @@ def get_ordered_shots(db: Session, user_id: int, project_id: int=None):
         
         # 如果顺序为空，直接返回空列表
         if not shots_order:
-            logger.info(f"用户 {user_id} 项目 {project_id if project_id else '默认'} 没有分镜顺序记录，返回空列表")
+            logger.info(f"用户 {user_id} 项目 {project_id} 没有分镜顺序记录，返回空列表")
             return []
         
         # 获取顺序中指定的分镜ID列表
@@ -123,12 +156,17 @@ def rebuild_shots_order(db: Session, shots, user_id:int, project_id:int=None):
         db: 数据库会话
         shots: 分镜列表（应该只包含当前用户的分镜）
         user_id: 用户ID
-        project_id: 项目ID，可选
+        project_id: 项目ID，必须提供
         
     Returns:
         更新后的顺序字典
     """
-    logger.info(f"正在为用户 {user_id} 项目 {project_id if project_id else '默认'} 重建分镜顺序，共 {len(shots)} 个分镜")
+    # 如果没有提供project_id，返回400错误
+    if project_id is None:
+        logger.error(f"用户 {user_id} 尝试重建分镜顺序但未提供project_id")
+        raise HTTPException(status_code=400, detail="必须提供项目ID")
+    
+    logger.info(f"正在为用户 {user_id} 项目 {project_id} 重建分镜顺序，共 {len(shots)} 个分镜")
     
     try:
         # 根据更新时间排序分镜
@@ -164,16 +202,40 @@ def add_shot_to_order(db: Session, shot_id: int, position: str = "end", referenc
         position: 添加位置("end", "above", "below")
         reference_shot_id: 参考分镜ID（如果position不是"end"）
         user_id: 用户ID
-        project_id: 项目ID，可选
+        project_id: 项目ID，必须提供
         
     Returns:
         更新后的顺序字典
     """
-    logger.info(f"正在将分镜 {shot_id} 添加到用户 {user_id} 项目 {project_id if project_id else '默认'} 的顺序中，位置: {position}")
+    # 如果没有提供project_id，返回400错误
+    if project_id is None:
+        logger.error(f"用户 {user_id} 尝试添加分镜 {shot_id} 到顺序但未提供project_id")
+        raise HTTPException(status_code=400, detail="必须提供项目ID")
+    
+    logger.info(f"正在将分镜 {shot_id} 添加到用户 {user_id} 项目 {project_id} 的顺序中，位置: {position}")
     
     try:
-        # 获取用户分镜顺序
-        user_shot = get_user_shots_order(db, user_id, project_id)
+        # 获取用户分镜顺序 - 确保使用user_id和project_id来精确匹配
+        query = db.query(models.UserShot).filter(
+            models.UserShot.user_id == user_id,
+            models.UserShot.project_id == project_id
+        )
+        
+        user_shot = query.first()
+        
+        # 如果不存在，创建一个新的
+        if not user_shot:
+            logger.info(f"用户 {user_id} 项目 {project_id} 的分镜顺序记录不存在，将创建新记录")
+            user_shot = models.UserShot(
+                user_id=user_id,
+                project_id=project_id,
+                shots_order={},
+                script="",
+                characters={}
+            )
+            db.add(user_shot)
+            db.flush()  # 确保实体已添加到数据库会话但尚未提交
+        
         shots_order = user_shot.shots_order.copy()
         
         # 如果顺序为空，直接添加为第一个
@@ -237,12 +299,17 @@ def remove_shot_from_order(db: Session, shot_id: int, user_id: int, project_id:i
         db: 数据库会话
         shot_id: 要移除的分镜ID
         user_id: 用户ID
-        project_id: 项目ID，可选
+        project_id: 项目ID，必须提供
         
     Returns:
         更新后的顺序字典
     """
-    logger.info(f"正在从用户 {user_id} 项目 {project_id if project_id else '默认'} 的顺序中移除分镜 {shot_id}")
+    # 如果没有提供project_id，返回400错误
+    if project_id is None:
+        logger.error(f"用户 {user_id} 尝试从顺序中移除分镜 {shot_id} 但未提供project_id")
+        raise HTTPException(status_code=400, detail="必须提供项目ID")
+    
+    logger.info(f"正在从用户 {user_id} 项目 {project_id} 的顺序中移除分镜 {shot_id}")
     
     try:
         # 获取用户分镜顺序
@@ -285,12 +352,17 @@ def set_shot_order(db: Session, shot_order_mapping: dict, user_id: int, project_
         db: 数据库会话
         shot_order_mapping: 分镜ID到顺序的映射字典，形如 {"1": 1, "2": 2, ...}
         user_id: 用户ID
-        project_id: 项目ID，可选
+        project_id: 项目ID，必须提供
         
     Returns:
         更新后的顺序字典
     """
-    logger.info(f"正在为用户 {user_id} 项目 {project_id if project_id else '默认'} 设置分镜顺序，共 {len(shot_order_mapping)} 个分镜")
+    # 如果没有提供project_id，返回400错误
+    if project_id is None:
+        logger.error(f"用户 {user_id} 尝试设置分镜顺序但未提供project_id")
+        raise HTTPException(status_code=400, detail="必须提供项目ID")
+    
+    logger.info(f"正在为用户 {user_id} 项目 {project_id} 设置分镜顺序，共 {len(shot_order_mapping)} 个分镜")
     
     try:
         # 获取用户分镜顺序
@@ -300,10 +372,129 @@ def set_shot_order(db: Session, shot_order_mapping: dict, user_id: int, project_
         user_shot.shots_order = shot_order_mapping
         db.commit()
         
-        logger.info(f"成功设置用户 {user_id} 项目 {project_id if project_id else '默认'} 的分镜顺序，共 {len(shot_order_mapping)} 个分镜")
+        logger.info(f"成功设置用户 {user_id} 项目 {project_id} 的分镜顺序，共 {len(shot_order_mapping)} 个分镜")
         return shot_order_mapping
         
     except Exception as e:
         db.rollback()
         log_exception(logger, f"设置分镜顺序失败: {str(e)}")
-        raise HTTPException(status_code=500, detail="设置分镜顺序失败") 
+        raise HTTPException(status_code=500, detail="设置分镜顺序失败")
+
+def update_script(db: Session, script: str, user_id: int, project_id: int = None):
+    """
+    更新用户项目的剧本内容
+    
+    Args:
+        db: 数据库会话
+        script: 剧本内容
+        user_id: 用户ID
+        project_id: 项目ID，必须提供
+        
+    Returns:
+        更新后的UserShot对象
+    """
+    # 如果没有提供project_id，返回400错误
+    if project_id is None:
+        logger.error(f"用户 {user_id} 尝试更新剧本但未提供project_id")
+        raise HTTPException(status_code=400, detail="必须提供项目ID")
+    
+    logger.info(f"用户 {user_id} 正在更新项目 {project_id} 的剧本")
+    
+    # 详细记录传入的参数
+    if script is None:
+        logger.warning(f"用户 {user_id} 提供的剧本内容为None，将使用空字符串")
+        script = ""
+    else:
+        try:
+            script_type = type(script).__name__
+            script_length = len(str(script)) if script is not None else 0
+            logger.debug(f"剧本内容类型: {script_type}, 内容长度: {script_length}")
+            if script_length > 100:
+                logger.debug(f"剧本内容前100字符: {str(script)[:100]}...")
+        except Exception as e:
+            logger.error(f"尝试记录剧本内容信息时出错: {str(e)}")
+    
+    # 确保script是字符串类型
+    if not isinstance(script, str):
+        try:
+            logger.warning(f"剧本内容不是字符串，类型为: {type(script).__name__}，尝试转换为字符串")
+            script = str(script)
+            logger.warning(f"剧本内容已自动转换为字符串，长度: {len(script)}")
+        except Exception as e:
+            log_exception(logger, f"转换剧本内容失败: {str(e)}")
+            raise HTTPException(status_code=400, detail="剧本内容必须是有效的字符串")
+    
+    try:
+        # 获取用户分镜顺序记录
+        logger.debug(f"尝试获取用户 {user_id} 项目 {project_id} 的分镜顺序记录")
+        user_shot = get_user_shots_order(db, user_id, project_id)
+        
+        if user_shot is None:
+            logger.error(f"未找到用户 {user_id} 项目 {project_id} 的分镜顺序记录")
+            raise HTTPException(status_code=404, detail="未找到项目信息")
+        
+        # 更新剧本内容
+        logger.debug(f"更新项目 {project_id} 的剧本，长度: {len(script)}")
+        user_shot.script = script
+        
+        # 记录更新时间
+        user_shot.updated_at = datetime.now(timezone.utc)
+        
+        # 提交数据库更改
+        try:
+            logger.debug("提交数据库更改")
+            db.commit()
+            logger.info(f"成功更新用户 {user_id} 项目 {project_id} 的剧本")
+            return user_shot
+        except Exception as e:
+            db.rollback()
+            log_exception(logger, f"数据库提交更改失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"数据库更新失败: {str(e)}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        log_exception(logger, f"更新剧本内容失败: {str(e)}")
+        # 提供更详细的错误消息
+        if "database" in str(e).lower():
+            raise HTTPException(status_code=500, detail=f"数据库操作失败: {str(e)}")
+        else:
+            raise HTTPException(status_code=500, detail=f"更新剧本内容失败: {str(e)}")
+
+def update_characters(db: Session, characters: dict, user_id: int, project_id: int = None):
+    """
+    更新用户项目的角色信息
+    
+    Args:
+        db: 数据库会话
+        characters: 角色信息字典，键为角色名，值为角色描述
+        user_id: 用户ID
+        project_id: 项目ID，必须提供
+        
+    Returns:
+        更新后的UserShot对象
+    """
+    # 如果没有提供project_id，返回400错误
+    if project_id is None:
+        logger.error(f"用户 {user_id} 尝试更新角色信息但未提供project_id")
+        raise HTTPException(status_code=400, detail="必须提供项目ID")
+    
+    logger.info(f"用户 {user_id} 正在更新项目 {project_id} 的角色信息")
+    logger.debug(f"角色数据: {characters}, 类型: {type(characters)}")
+    
+    try:
+        # 获取用户分镜顺序记录
+        user_shot = get_user_shots_order(db, user_id, project_id)
+        
+        # 更新角色信息
+        user_shot.characters = characters
+        db.commit()
+        
+        logger.info(f"成功更新用户 {user_id} 项目 {project_id} 的角色信息")
+        return user_shot
+        
+    except Exception as e:
+        db.rollback()
+        log_exception(logger, f"更新角色信息失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="更新角色信息失败")

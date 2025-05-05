@@ -9,7 +9,11 @@ import {
   deleteShot as apiDeleteShot,
   insertShot as apiInsertShot,
   deleteAllShots as apiDeleteAllShots,
-  replaceShotsFromText as apiReplaceShotsFromText
+  replaceShotsFromText as apiReplaceShotsFromText,
+  getAllShots,
+  getProjectInfo,
+  updateScript as apiUpdateScript,
+  updateCharacters as apiUpdateCharacters
 } from './shotApi';
 // 我们已经不再使用LLM服务，这里只保留类型定义
 import type { LLMService } from '../llm';
@@ -70,24 +74,35 @@ export const useShotManager = () => {
   // === 状态定义 ===
   const [shots, setShots] = useState<Shot[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [currentProjectId, setCurrentProjectId] = useState<number | undefined>(undefined);
+  const [currentProjectId, setCurrentProjectId] = useState<number | null>(null);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isLoadingShots, setIsLoadingShots] = useState(false);
-  const [shotMessage, setShotMessage] = useState<ShotMessage | null>(null);
+  const [shotMessage, setShotMessage] = useState<{id: number | null, message: string, type: 'success' | 'error'} | null>(null);
   const [isDeletingAllShots, setIsDeletingAllShots] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
   const [isInsertingShot, setIsInsertingShot] = useState<number | null>(null);
   const [isDeletingShot, setIsDeletingShot] = useState<number | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  // 剧本和角色状态
+  const [script, setScript] = useState<string>("");
+  const [characters, setCharacters] = useState<{[key: string]: string}>({});
+  const [isUpdatingScript, setIsUpdatingScript] = useState(false);
+  const [isUpdatingCharacters, setIsUpdatingCharacters] = useState(false);
 
   // 自动保存定时器，使用数据库 id 作为 key
   const saveTimersRef = useRef<{[key: number]: NodeJS.Timeout}>({});
+  // 剧本和角色保存定时器
+  const scriptSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const charactersSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   /**
    * 清除错误提示的辅助函数
    */
-  const clearError = useCallback((delay = 3000) => {
-    setTimeout(() => setError(""), delay);
+  const clearError = useCallback(() => {
+    setTimeout(() => {
+      setError(null);
+    }, 5000);
   }, []);
 
   /**
@@ -101,7 +116,7 @@ export const useShotManager = () => {
       setProjects(data);
       
       // 如果有项目且当前没有选择项目，自动选择第一个
-      if (data.length > 0 && currentProjectId === undefined) {
+      if (data.length > 0 && currentProjectId === null) {
         setCurrentProjectId(data[0].project_id);
       }
       
@@ -150,27 +165,29 @@ export const useShotManager = () => {
    * 切换当前项目
    */
   const switchProject = useCallback(async (projectId: number) => {
-    if (projectId === currentProjectId) return;
+    if (currentProjectId === projectId) return;
     
-    // 清除所有保存定时器
-    Object.values(saveTimersRef.current).forEach(clearTimeout);
-    saveTimersRef.current = {};
-    
-    setCurrentProjectId(projectId);
-    // 加载新项目的分镜列表
     setIsLoadingShots(true);
+    setCurrentProjectId(projectId);
+    
     try {
-      const data = await apiLoadShots(projectId);
-      setShots(data);
+      // 使用新API获取项目完整信息，包括分镜、剧本和角色
+      const projectInfo = await getProjectInfo(projectId);
+      
+      // 更新各状态
+      setShots(projectInfo.shots || []);
+      setScript(projectInfo.script || "");
+      setCharacters(projectInfo.characters || {});
+      
     } catch (error) {
-      console.error(`加载项目 ${projectId} 的分镜失败:`, error);
-      const errorMsg = error instanceof Error ? error.message : "无法加载该项目的分镜";
+      console.error("切换项目失败:", error);
+      const errorMsg = error instanceof Error ? error.message : "切换项目失败";
       setError(errorMsg);
       clearError();
     } finally {
       setIsLoadingShots(false);
     }
-  }, [clearError, currentProjectId]);
+  }, [currentProjectId, clearError]);
 
   /**
    * 添加新分镜到列表末尾
@@ -464,22 +481,141 @@ export const useShotManager = () => {
     }
   }, [shots.length, clearError, currentProjectId]);
 
+  /**
+   * 更新剧本内容
+   */
+  const updateScriptContent = useCallback(async (newScript: string) => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法更新剧本");
+      return;
+    }
+    
+    // 先更新本地状态，实现即时反馈
+    setScript(newScript);
+  }, [currentProjectId]);
+
+  /**
+   * 保存剧本内容到后端
+   */
+  const saveScript = useCallback(async () => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法保存剧本");
+      return;
+    }
+    
+    // 检查script是否为null或undefined
+    if (script === null || script === undefined) {
+      console.error("剧本内容为null或undefined，无法保存");
+      setError("剧本内容无效，无法保存");
+      clearError();
+      return;
+    }
+    
+    setIsUpdatingScript(true);
+    try {
+      console.log("正在保存剧本，内容长度:", script.length, "字节");
+      
+      // 检查script是否为JSON字符串，如果是，则需要先解析再传递内容
+      let scriptContent = script;
+      try {
+        // 如果script是JSON字符串 (例如 "{}")，尝试解析并使用原始字符串
+        if (script.trim().startsWith('{') && script.trim().endsWith('}')) {
+          const parsedJson = JSON.parse(script);
+          // 如果成功解析，则使用JSON.stringify后的内容
+          scriptContent = JSON.stringify(parsedJson);
+          console.log("检测到script是JSON对象字符串，已处理为:",scriptContent);
+        }
+      } catch (e) {
+        // 解析失败，说明不是有效的JSON，使用原始内容
+        console.log("script不是JSON格式，使用原始内容");
+      }
+      
+      await apiUpdateScript(scriptContent, currentProjectId);
+      // 设置成功消息
+      setShotMessage({ id: null, message: "剧本保存成功", type: 'success' });
+      setTimeout(() => {
+        setShotMessage(null);
+      }, 3000);
+    } catch (error) {
+      console.error("保存剧本失败:", error);
+      // 更详细的错误信息
+      if (error instanceof Error) {
+        console.error("错误详情:", error.message, error.stack);
+      }
+      const errorMsg = error instanceof Error ? error.message : "保存剧本失败";
+      setError(errorMsg);
+      clearError();
+    } finally {
+      setIsUpdatingScript(false);
+    }
+  }, [script, currentProjectId, clearError]);
+
+  /**
+   * 处理剧本文本框失焦事件，3秒后保存
+   */
+  const handleScriptBlur = useCallback(() => {
+    // 移除自动保存功能，仅在点击保存按钮时保存
+    if (scriptSaveTimerRef.current) {
+      clearTimeout(scriptSaveTimerRef.current);
+      scriptSaveTimerRef.current = null;
+    }
+    
+    // 不再设置自动保存定时器
+  }, []);
+
+  /**
+   * 更新角色信息
+   */
+  const updateCharactersInfo = useCallback((newCharacters: {[key: string]: string}) => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法更新角色信息");
+      return;
+    }
+    
+    // 先更新本地状态，实现即时反馈
+    setCharacters(newCharacters);
+  }, [currentProjectId]);
+
+  /**
+   * 保存角色信息到后端
+   */
+  const saveCharacters = useCallback(async () => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法保存角色信息");
+      return;
+    }
+    
+    setIsUpdatingCharacters(true);
+    try {
+      await apiUpdateCharacters(characters, currentProjectId);
+      // 设置成功消息
+      setShotMessage({ id: null, message: "角色信息保存成功", type: 'success' });
+      setTimeout(() => {
+        setShotMessage(null);
+      }, 3000);
+    } catch (error) {
+      console.error("保存角色信息失败:", error);
+      const errorMsg = error instanceof Error ? error.message : "保存角色信息失败";
+      setError(errorMsg);
+      clearError();
+    } finally {
+      setIsUpdatingCharacters(false);
+    }
+  }, [characters, currentProjectId, clearError]);
+
   // 组件卸载时清除所有定时器
   useEffect(() => {
     return () => {
       Object.values(saveTimersRef.current).forEach(clearTimeout);
+      if (scriptSaveTimerRef.current) clearTimeout(scriptSaveTimerRef.current);
+      if (charactersSaveTimerRef.current) clearTimeout(charactersSaveTimerRef.current);
     };
   }, []);
 
   // 初始加载项目和分镜
   useEffect(() => {
-    loadProjects().then((projects) => {
-      // 只有在有项目ID时才加载分镜
-      if (currentProjectId) {
-        loadShots();
-      }
-    });
-  }, [loadProjects, loadShots, currentProjectId]);
+    loadProjects();
+  }, [loadProjects]);
 
   return {
     // 项目相关状态
@@ -511,6 +647,17 @@ export const useShotManager = () => {
     insertShot,
     deleteAllShots,
     replaceShotsFromText,
+    
+    // 剧本和角色相关
+    script,
+    characters,
+    isUpdatingScript,
+    isUpdatingCharacters,
+    updateScriptContent,
+    saveScript,
+    handleScriptBlur,
+    updateCharactersInfo,
+    saveCharacters,
     
     // 辅助方法
     setError,

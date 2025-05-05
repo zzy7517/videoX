@@ -12,6 +12,15 @@ export interface Shot {
 }
 
 /**
+ * 项目信息接口定义，包含分镜、剧本和角色信息
+ */
+export interface ProjectInfo {
+  shots: Shot[];
+  script?: string; // 剧本内容
+  characters?: {[key: string]: string}; // 角色信息，键为角色名，值为描述
+}
+
+/**
  * 项目接口定义
  */
 export interface Project {
@@ -47,6 +56,60 @@ export const loadProjects = async (): Promise<Project[]> => {
 }
 
 /**
+ * 获取当前项目的所有分镜
+ * @param projectId 项目ID
+ * @returns 分镜数组
+ */
+export const getAllShots = async (projectId: number): Promise<Shot[]> => {
+  if (!projectId) {
+    console.error('调用getAllShots必须提供有效的projectId');
+    return [];
+  }
+
+  try {
+    const url = `${API_BASE_URL}/shots/?project_id=${projectId}`;
+    const response = await fetchWithAuth(url, { method: 'GET' });
+
+    if (!response.ok) {
+      throw new Error(`获取分镜列表失败: 状态码 ${response.status}`);
+    }
+
+    // 现在API返回的是ProjectInfo对象，我们只需要返回shots数组
+    const data: ProjectInfo = await response.json();
+    return data.shots || [];
+  } catch (error) {
+    console.error("获取分镜列表失败:", error);
+    return [];
+  }
+}
+
+/**
+ * 获取项目信息，包含分镜、剧本和角色
+ * @param projectId 项目ID
+ * @returns 项目信息对象
+ */
+export const getProjectInfo = async (projectId: number): Promise<ProjectInfo> => {
+  if (!projectId) {
+    console.error('调用getProjectInfo必须提供有效的projectId');
+    return { shots: [] };
+  }
+
+  try {
+    const url = `${API_BASE_URL}/shots/?project_id=${projectId}`;
+    const response = await fetchWithAuth(url, { method: 'GET' });
+
+    if (!response.ok) {
+      throw new Error(`获取项目信息失败: 状态码 ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("获取项目信息失败:", error);
+    return { shots: [] };
+  }
+}
+
+/**
  * 从服务器加载所有分镜
  */
 export const loadShots = async (projectId: number): Promise<Shot[]> => {
@@ -63,13 +126,21 @@ export const loadShots = async (projectId: number): Promise<Shot[]> => {
       throw new Error(`加载分镜失败：状态码 ${response.status}`)
     }
     const data = await response.json()
-    // 确保返回的是数组
-    if (!Array.isArray(data)) {
-      console.error('后端返回的分镜数据不是数组格式', data)
-      return []
+    
+    // 处理后端返回的数据
+    // 如果是ProjectInfo对象（包含shots数组）
+    if (data && typeof data === 'object' && 'shots' in data && Array.isArray(data.shots)) {
+      return data.shots;
     }
-    // 后端已按 order 排序
-    return data
+    // 如果是直接返回的数组
+    else if (Array.isArray(data)) {
+      return data;
+    }
+    // 其他情况
+    else {
+      console.error('后端返回的分镜数据格式不正确', data);
+      return [];
+    }
   } catch (error) {
     console.error('加载分镜失败:', error)
     // 出错时返回空数组
@@ -177,9 +248,21 @@ export const deleteShot = async (shot_id: number, projectId: number): Promise<Sh
     throw new Error(`删除分镜 ${shot_id} 失败：状态码 ${response.status}`)
   }
 
-  // 后端返回了更新后的完整列表
-  const updatedShots: Shot[] = await response.json()
-  return updatedShots
+  // 处理后端返回的数据
+  const data = await response.json();
+  // 如果是ProjectInfo对象（包含shots数组）
+  if (data && typeof data === 'object' && 'shots' in data && Array.isArray(data.shots)) {
+    return data.shots;
+  }
+  // 如果是直接返回的数组
+  else if (Array.isArray(data)) {
+    return data;
+  }
+  // 其他情况
+  else {
+    console.error('后端返回的分镜数据格式不正确', data);
+    return [];
+  }
 }
 
 /**
@@ -211,9 +294,21 @@ export const insertShot = async (reference_shot_id: number, position: 'above' | 
     throw new Error(`插入分镜失败：状态码 ${response.status}`)
   }
 
-  // 后端返回了更新后的完整列表
-  const updatedShots: Shot[] = await response.json()
-  return updatedShots
+  // 处理后端返回的数据
+  const data = await response.json();
+  // 如果是ProjectInfo对象（包含shots数组）
+  if (data && typeof data === 'object' && 'shots' in data && Array.isArray(data.shots)) {
+    return data.shots;
+  }
+  // 如果是直接返回的数组
+  else if (Array.isArray(data)) {
+    return data;
+  }
+  // 其他情况
+  else {
+    console.error('后端返回的分镜数据格式不正确', data);
+    return [];
+  }
 }
 
 /**
@@ -278,30 +373,165 @@ export const replaceShotsFromText = async (textContent: string, projectId: numbe
         throw new Error(`批量替换分镜失败：状态码 ${response.status}`);
     }
 
-    // 后端返回了新创建的分镜列表
-    const newShots: Shot[] = await response.json();
-    return newShots;
+    // 处理后端返回的数据
+    const data = await response.json();
+    // 如果是ProjectInfo对象（包含shots数组）
+    if (data && typeof data === 'object' && 'shots' in data && Array.isArray(data.shots)) {
+      return data.shots;
+    }
+    // 如果是直接返回的数组
+    else if (Array.isArray(data)) {
+      return data;
+    }
+    // 其他情况
+    else {
+      console.error('后端返回的分镜数据格式不正确', data);
+      return [];
+    }
 };
 
 /**
  * 创建新项目
  * @param name 项目名称
+ * @returns 返回创建的项目
  */
 export const createProject = async (name: string): Promise<Project> => {
+  const response = await fetchWithAuth(`${API_BASE_URL}/projects/`, {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`创建项目失败：状态码 ${response.status}`)
+  }
+
+  const newProject: Project = await response.json()
+  return newProject
+}
+
+/**
+ * 删除指定ID的项目
+ * @param projectId 项目ID
+ * @returns 返回删除操作是否成功
+ */
+export const deleteProject = async (projectId: number): Promise<boolean> => {
+  if (!projectId) {
+    console.error('调用deleteProject必须提供有效的projectId');
+    return false;
+  }
+  
+  const url = `${API_BASE_URL}/projects/${projectId}`;
+    
+  const response = await fetchWithAuth(url, {
+    method: 'DELETE'
+  });
+
+  return response.ok;
+}
+
+/**
+ * 更新项目剧本
+ * @param script 剧本内容
+ * @param projectId 项目ID
+ * @returns 响应消息
+ */
+export const updateScript = async (script: string, projectId: number): Promise<{message: string}> => {
+  if (!projectId) {
+    console.error('调用updateScript必须提供有效的projectId');
+    throw new Error('必须提供有效的项目ID');
+  }
+
+  const url = `${API_BASE_URL}/shots/script?project_id=${projectId}`;
+
+  // 确保script是字符串类型
+  const scriptContent = typeof script === 'string' ? script : String(script);
+  
+  // 构建请求体，严格按照后端ScriptUpdate模型的格式，同时添加project_id
+  const requestBody = JSON.stringify({ 
+    script: scriptContent,
+    project_id: projectId  // 添加project_id到请求体
+  });
+  
+  console.log('updateScript API 调用:', { 
+    projectId, 
+    scriptType: typeof script,
+    scriptContentType: typeof scriptContent,
+    scriptContentLength: scriptContent.length,
+    scriptContent: scriptContent.substring(0, 100) + (scriptContent.length > 100 ? '...' : ''),
+    requestBody
+  });
+
   try {
-    const response = await fetchWithAuth(`${API_BASE_URL}/projects/`, {
-      method: 'POST',
-      body: JSON.stringify({ name }),
-    })
-    
+    // 确保正确的请求格式，与后端ScriptUpdate模型对应
+    const response = await fetchWithAuth(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: requestBody
+    });
+
     if (!response.ok) {
-      throw new Error(`创建项目失败：状态码 ${response.status}`)
+      const errorText = await response.text();
+      console.error('更新剧本失败，状态码:', response.status, '服务器响应:', errorText);
+      throw new Error(`更新剧本失败：状态码 ${response.status}, 错误信息: ${errorText}`);
     }
-    
-    const data = await response.json()
-    return data
+
+    return await response.json();
   } catch (error) {
-    console.error('创建项目失败:', error)
-    throw error
+    console.error('更新剧本请求失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 更新项目角色信息
+ * @param characters 角色信息字典
+ * @param projectId 项目ID
+ * @returns 响应对象，包含消息和更新后的角色信息
+ */
+export const updateCharacters = async (
+  characters: {[key: string]: string}, 
+  projectId: number
+): Promise<{message: string, characters: {[key: string]: string}}> => {
+  if (!projectId) {
+    console.error('调用updateCharacters必须提供有效的projectId');
+    throw new Error('必须提供有效的项目ID');
+  }
+
+  const url = `${API_BASE_URL}/shots/characters?project_id=${projectId}`;
+  
+  // 构建请求体，确保格式正确
+  const requestBody = JSON.stringify({ 
+    characters: characters,
+    project_id: projectId
+  });
+  
+  // 添加日志以便调试
+  console.log('updateCharacters API 调用:', { 
+    projectId,
+    charactersLength: Object.keys(characters).length,
+    requestBody
+  });
+
+  try {
+    const response = await fetchWithAuth(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: requestBody
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('更新角色信息失败，状态码:', response.status, '服务器响应:', errorText);
+      throw new Error(`更新角色信息失败：状态码 ${response.status}, 错误信息: ${errorText}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('更新角色信息请求失败:', error);
+    throw error;
   }
 } 

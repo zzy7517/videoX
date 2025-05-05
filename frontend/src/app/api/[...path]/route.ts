@@ -72,8 +72,14 @@ export async function POST(
   const authHeader = request.headers.get('Authorization');
   const body = await request.text();
   
-  // 构建API URL
-  const apiUrl = `http://localhost:8000/${pathString}`;
+  // 获取查询参数
+  const url = new URL(request.url);
+  const queryString = url.search;
+  
+  // 构建API URL，包含查询参数
+  const apiUrl = `http://localhost:8000/${pathString}${queryString}`;
+  
+  console.log(`转发POST请求到: ${apiUrl}`);
   
   // 复制请求头，添加认证头
   const headers = new Headers({
@@ -131,8 +137,14 @@ export async function PUT(
   const authHeader = request.headers.get('Authorization');
   const body = await request.text();
   
-  // 构建API URL
-  const apiUrl = `http://localhost:8000/${pathString}`;
+  // 获取查询参数
+  const url = new URL(request.url);
+  const queryString = url.search;
+  
+  // 构建API URL，包含查询参数
+  const apiUrl = `http://localhost:8000/${pathString}${queryString}`;
+  
+  console.log(`转发PUT请求到: ${apiUrl}`);
   
   // 复制请求头，添加认证头
   const headers = new Headers({
@@ -189,8 +201,14 @@ export async function DELETE(
   // 从请求中获取认证头
   const authHeader = request.headers.get('Authorization');
   
-  // 构建API URL
-  const apiUrl = `http://localhost:8000/${pathString}`;
+  // 获取查询参数
+  const url = new URL(request.url);
+  const queryString = url.search;
+  
+  // 构建API URL，包含查询参数
+  const apiUrl = `http://localhost:8000/${pathString}${queryString}`;
+  
+  console.log(`转发DELETE请求到: ${apiUrl}`);
   
   // 复制请求头，添加认证头
   const headers = new Headers();

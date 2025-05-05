@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog"
 import { Navbar } from '@/lib/features/auth/Navbar'
 import { useAuth, ProtectedRoute } from '@/lib/features/auth'
-import { Project, loadProjects, createProject } from '@/lib/features/shot/shotApi'
+import { Project, loadProjects, createProject, deleteProject } from '@/lib/features/shot/shotApi'
 
 /**
  * 项目选择页面
@@ -61,6 +61,7 @@ function ProjectsContent() {
   const [newProjectName, setNewProjectName] = useState("")
   const [isCreating, setIsCreating] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   
   // 加载项目列表
   const fetchProjects = async () => {
@@ -101,6 +102,36 @@ function ProjectsContent() {
   const goToProject = (projectId: number) => {
     router.push(`/editor?projectId=${projectId}`)
   }
+  
+  // 删除项目
+  const handleDeleteProject = async (projectId: number, event: React.MouseEvent) => {
+    event.stopPropagation(); // 阻止冒泡，避免触发进入项目
+    
+    if (isDeleting) return;
+    
+    if (!confirm("确定要删除此项目吗？此操作不可撤销。")) {
+      return;
+    }
+    
+    try {
+      setIsDeleting(true);
+      setError(null);
+      
+      // 使用API删除项目
+      const success = await deleteProject(projectId);
+      
+      if (!success) {
+        throw new Error("删除项目失败");
+      }
+      
+      // 从项目列表中移除已删除的项目
+      setProjects(prev => prev.filter(p => p.project_id !== projectId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除项目失败");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
   
   // 初始加载项目列表
   useEffect(() => {
@@ -177,19 +208,33 @@ function ProjectsContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {projects.map((project) => (
                 <Card key={project.project_id} className="group hover:shadow-xl transition-all duration-300 backdrop-blur-sm bg-white/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700">
-                  <CardHeader>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-xl font-semibold text-slate-700 dark:text-slate-200 truncate">
                       {project.name}
                     </CardTitle>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      className="h-7 w-7 p-0 text-slate-400 hover:text-red-600 hover:bg-red-100/50 dark:hover:bg-red-900/30 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                      onClick={(e) => handleDeleteProject(project.project_id, e)}
+                      disabled={isDeleting}
+                      title="删除项目"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                        <line x1="10" y1="11" x2="10" y2="17"/>
+                        <line x1="14" y1="11" x2="14" y2="17"/>
+                      </svg>
+                    </Button>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-slate-500 dark:text-slate-400">
                       项目ID: {project.project_id}
                     </p>
                   </CardContent>
-                  <CardFooter>
+                  <CardFooter className="flex justify-between gap-2">
                     <Button 
-                      className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-90 transition-opacity"
+                      className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-90 transition-opacity"
                       onClick={() => goToProject(project.project_id)}
                     >
                       进入项目

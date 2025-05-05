@@ -115,6 +115,22 @@ function SettingsContent() {
     router.push('/editor');
   };
 
+  // 处理验证按钮点击
+  const handleValidateGroqKey = () => {
+    if (groqApiKey) validateGroqApiKey(groqApiKey);
+  };
+
+  const handleValidateSiliconFlowKey = () => {
+    if (siliconFlowApiKey) validateSiliconFlowApiKey(siliconFlowApiKey);
+  };
+
+  const handleValidateOpenAIKey = () => {
+    if (openaiApiKey) validateOpenAIApiKey(openaiApiKey);
+  };
+
+  // 转换comfyuiConfig为字符串以便在textarea中显示
+  const comfyuiConfigStr = comfyuiConfig ? JSON.stringify(comfyuiConfig, null, 2) : '';
+
   // === UI 渲染 ===
   return (
     <>
@@ -190,8 +206,16 @@ function SettingsContent() {
                         ComfyUI Workflow 配置 (JSON)
                       </label>
                       <Textarea
-                        value={comfyuiConfig}
-                        onChange={(e) => updateComfyuiConfig(e.target.value)}
+                        value={comfyuiConfigStr}
+                        onChange={(e) => {
+                          try {
+                            const parsed = JSON.parse(e.target.value);
+                            updateComfyuiConfig(parsed);
+                          } catch (err) {
+                            // 如果JSON解析失败，依然更新文本内容
+                            console.error("JSON解析失败:", err);
+                          }
+                        }}
                         placeholder="请粘贴ComfyUI Workflow JSON配置"
                         className="min-h-[200px] bg-white/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-600 text-sm monospace font-mono"
                       />
@@ -211,7 +235,7 @@ function SettingsContent() {
                       </label>
                       <input
                         type="text"
-                        value={openaiUrl}
+                        value={openaiUrl || ''}
                         onChange={(e) => updateOpenaiUrl(e.target.value)}
                         placeholder="https://api.openai.com/v1"
                         className="w-full px-3 py-2 border rounded-md text-sm bg-white/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/30"
@@ -225,13 +249,13 @@ function SettingsContent() {
                       <div className="flex gap-2">
                         <input
                           type="password"
-                          value={openaiApiKey}
+                          value={openaiApiKey || ''}
                           onChange={(e) => updateOpenaiApiKey(e.target.value)}
                           placeholder="sk-..."
                           className="flex-1 px-3 py-2 border rounded-md text-sm bg-white/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/30"
                         />
                         <Button 
-                          onClick={validateOpenAIApiKey} 
+                          onClick={handleValidateOpenAIKey} 
                           disabled={isValidatingOpenAI || !openaiApiKey}
                           size="sm"
                           className="whitespace-nowrap"
@@ -253,7 +277,7 @@ function SettingsContent() {
                       </label>
                       <input
                         type="text"
-                        value={model}
+                        value={model || ''}
                         onChange={(e) => updateModel(e.target.value)}
                         placeholder="gpt-4o"
                         className="w-full px-3 py-2 border rounded-md text-sm bg-white/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/30"
@@ -272,13 +296,13 @@ function SettingsContent() {
                       <div className="flex gap-2">
                         <input
                           type="password"
-                          value={groqApiKey}
+                          value={groqApiKey || ''}
                           onChange={(e) => updateGroqApiKey(e.target.value)}
                           placeholder="gsk_..."
                           className="flex-1 px-3 py-2 border rounded-md text-sm bg-white/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/30"
                         />
                         <Button 
-                          onClick={validateGroqApiKey} 
+                          onClick={handleValidateGroqKey} 
                           disabled={isValidatingGroq || !groqApiKey}
                           size="sm"
                           className="whitespace-nowrap"
@@ -300,7 +324,7 @@ function SettingsContent() {
                       </label>
                       <input
                         type="text"
-                        value={groqModels}
+                        value={groqModels || ''}
                         onChange={(e) => updateGroqModels(e.target.value)}
                         placeholder="llama3-8b-8192"
                         className="w-full px-3 py-2 border rounded-md text-sm bg-white/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/30"
@@ -319,13 +343,13 @@ function SettingsContent() {
                       <div className="flex gap-2">
                         <input
                           type="password"
-                          value={siliconFlowApiKey}
+                          value={siliconFlowApiKey || ''}
                           onChange={(e) => updateSiliconFlowApiKey(e.target.value)}
                           placeholder="sf-..."
                           className="flex-1 px-3 py-2 border rounded-md text-sm bg-white/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/30"
                         />
                         <Button 
-                          onClick={validateSiliconFlowApiKey} 
+                          onClick={handleValidateSiliconFlowKey} 
                           disabled={isValidatingSiliconFlow || !siliconFlowApiKey}
                           size="sm"
                           className="whitespace-nowrap"
@@ -347,7 +371,7 @@ function SettingsContent() {
                       </label>
                       <input
                         type="text"
-                        value={siliconFlowModels}
+                        value={siliconFlowModels || ''}
                         onChange={(e) => updateSiliconFlowModels(e.target.value)}
                         placeholder="gemma-7b"
                         className="w-full px-3 py-2 border rounded-md text-sm bg-white/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500/30"

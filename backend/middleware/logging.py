@@ -23,7 +23,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             f"方法: {request.method} | "
             f"客户端: {client_host} | "
             f"请求ID: {request_id}"
-            f"call_next: {call_next}"
         )
         
         # 调用下一个中间件或路由处理函数

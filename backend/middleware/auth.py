@@ -39,11 +39,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # OPTIONS 请求直接放行，解决CORS预检问题
         if request.method == "OPTIONS":
+            logger.debug("OPTIONS请求，直接放行")
             response = await call_next(request)
             return response
             
         # 对公开路径不进行认证检查
         if any(request.url.path.startswith(path) for path in PUBLIC_PATHS):
+            logger.debug(f"公开路径 {request.url.path}，不需要认证")
             response = await call_next(request)
             return response
             
@@ -51,32 +53,68 @@ class AuthMiddleware(BaseHTTPMiddleware):
         auth_header = request.headers.get("Authorization")
         token = None
         
+        # 记录认证信息
+        logger.debug(f"请求路径: {request.url.path}, 认证头: {auth_header and auth_header[:15]}...")
+        
         # 初始化请求状态
         request.state.authenticated = False
         request.state.user_id = None
         
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.replace("Bearer ", "")
+            logger.debug(f"提取令牌: {token[:15]}...")
             
             try:
                 # 解码令牌
                 payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
                 user_id = payload.get("sub")  # 从令牌中提取用户ID
+                logger.debug(f"解码令牌成功，用户ID: {user_id}")
                 
                 if user_id:
                     # 设置认证信息
                     request.state.authenticated = True
                     request.state.user_id = user_id
+                    logger.debug(f"认证成功，用户ID: {user_id}")
+                    
+                    # 记录请求内容
+                    if request.url.path == "/shots/script" and request.method == "PUT":
+                        try:
+                            # 不再直接读取请求体，而是通过创建一个自定义的Request类来处理
+                            # 这种方式避免干扰FastAPI的请求处理流程
+                            logger.debug(f"准备记录PUT /shots/script请求体内容")
+                            
+                            # 我们不会在中间件中读取请求体
+                            # 而是在路由处理函数中添加详细日志
+                            logger.debug(f"请求头: {request.headers}")
+                        except Exception as e:
+                            logger.error(f"处理请求体时出错: {str(e)}", exc_info=True)
                     
                     # 继续处理请求
-                    response = await call_next(request)
-                    return response
+                    try:
+                        logger.debug(f"开始处理请求: {request.url.path}")
+                        response = await call_next(request)
+                        logger.debug(f"完成处理请求: {request.url.path}, 状态码: {response.status_code}")
+                        
+                        # 记录响应状态
+                        logger.debug(f"响应状态: {response.status_code}")
+                        if response.status_code == 422:
+                            logger.error(f"422错误 - 请求参数验证失败: {request.url.path}")
+                        
+                        return response
+                    except Exception as e:
+                        logger.error(f"处理请求时发生异常: {request.url.path}, 错误: {str(e)}", exc_info=True)
+                        raise
+                else:
+                    logger.warning(f"令牌中没有用户ID")
                     
             except PyJWTError as e:
                 logger.warning(f"令牌验证失败: {str(e)}")
                 # 令牌无效，继续处理未认证状态
+        else:
+            logger.warning(f"无认证头或格式不正确: {auth_header}")
         
         # 用户未认证，返回401错误
+        logger.warning(f"认证失败，返回401错误: {request.url.path}")
         return Response(
             content='{"detail":"未授权访问"}',
             status_code=status.HTTP_401_UNAUTHORIZED,

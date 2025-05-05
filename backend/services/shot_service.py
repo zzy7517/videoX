@@ -18,12 +18,19 @@ def get_all_shots(db: Session, user_id: int = None, project_id: int = None):
     Args:
         db: 数据库会话
         user_id: 用户ID，如果为None则使用默认用户
-        project_id: 项目ID，可选
+        project_id: 项目ID，如果为None则使用默认项目ID 1
         
     Returns:
         按顺序排列的分镜列表 (包含 t2i_prompt)
     """
-    logger.info(f"正在获取用户 {user_id if user_id else '默认'} 项目 {project_id if project_id else '默认'} 的所有分镜 (按 order 排序)")
+    # 确保用户ID和项目ID不为空
+    if user_id is None:
+        user_id = 1  # 使用默认用户ID
+    
+    if project_id is None:
+        project_id = 1  # 使用默认项目ID
+    
+    logger.info(f"正在获取用户 {user_id} 项目 {project_id} 的所有分镜 (按 order 排序)")
     try:
         # 使用用户分镜服务获取已排序的分镜
         shots = user_shot_service.get_ordered_shots(db, user_id, project_id)
@@ -35,21 +42,29 @@ def get_all_shots(db: Session, user_id: int = None, project_id: int = None):
 
 def create_shot(db: Session, content: str, t2i_prompt: Optional[str] = None, user_id: int = None, project_id: int = None):
     """
-    创建新分镜并添加到列表末尾
+    创建新分镜
     
     Args:
         db: 数据库会话
         content: 分镜内容
-        t2i_prompt: 可选的提示词
-        user_id: 用户ID，指定为哪个用户创建分镜
-        project_id: 项目ID，可选
+        t2i_prompt: 提示词 (可选)
+        user_id: 用户ID，如果为None则使用默认用户ID 1
+        project_id: 项目ID，如果为None则使用默认项目ID 1
         
     Returns:
         创建的分镜对象
     """
-    logger.info(f"用户 {user_id if user_id else '默认'} 项目 {project_id if project_id else '默认'} 正在末尾创建新分镜，内容: {content}, 提示词: {t2i_prompt}")
+    # 确保用户ID和项目ID不为空
+    if user_id is None:
+        user_id = 1  # 使用默认用户ID
+    
+    if project_id is None:
+        project_id = 1  # 使用默认项目ID
+    
+    logger.info(f"用户 {user_id} 项目 {project_id} 正在末尾创建新分镜，内容: {content}, 提示词: {t2i_prompt}")
+    
     try:
-        # 创建新分镜对象
+        # 创建新分镜
         db_shot = models.Shot(
             content=content,
             t2i_prompt=t2i_prompt
@@ -57,15 +72,10 @@ def create_shot(db: Session, content: str, t2i_prompt: Optional[str] = None, use
         db.add(db_shot)
         db.commit()
         db.refresh(db_shot)
+        logger.info(f"已添加新分镜，内容: {content}, ID: {db_shot.shot_id}")
         
         # 添加到用户分镜顺序的末尾
         try:
-            # 确保用户ID不为空
-            if user_id is None:
-                logger.warning("创建分镜时未指定用户ID，将无法正确添加到用户顺序中")
-                db_shot.order = 1
-                return db_shot
-                
             user_shot_service.add_shot_to_order(db, db_shot.shot_id, position="end", user_id=user_id, project_id=project_id)
             
             # 获取更新后的完整对象（包含order）
@@ -102,12 +112,19 @@ def update_shot(db: Session, shot_id: int, content: Optional[str] = None, t2i_pr
         content: 新的分镜内容 (可选)
         t2i_prompt: 新的提示词 (可选)
         user_id: 用户ID，用于获取更新后的分镜
-        project_id: 项目ID，可选
+        project_id: 项目ID，如果为None则使用默认项目ID 1
         
     Returns:
         更新后的分镜对象
     """
-    logger.info(f"用户 {user_id if user_id else '默认'} 项目 {project_id if project_id else '默认'} 正在更新 ID 为 {shot_id} 的分镜")
+    # 确保用户ID和项目ID不为空
+    if user_id is None:
+        user_id = 1  # 使用默认用户ID
+    
+    if project_id is None:
+        project_id = 1  # 使用默认项目ID
+    
+    logger.info(f"用户 {user_id} 项目 {project_id} 正在更新 ID 为 {shot_id} 的分镜")
     try:
         db_shot = db.query(models.Shot).filter(models.Shot.shot_id == shot_id).first()
         if not db_shot:
@@ -155,12 +172,19 @@ def delete_shot(db: Session, shot_id: int, user_id: int, project_id: int = None)
         db: 数据库会话
         shot_id: 要删除的分镜ID
         user_id: 用户ID，指定哪个用户的分镜顺序需要更新
-        project_id: 项目ID，可选
+        project_id: 项目ID，如果为None则使用默认项目ID 1
         
     Returns:
         重新排序后的分镜列表
     """
-    logger.info(f"正在删除用户 {user_id} 项目 {project_id if project_id else '默认'} 的 ID 为 {shot_id} 的分镜并重新排序")
+    # 确保用户ID和项目ID不为空
+    if user_id is None:
+        user_id = 1  # 使用默认用户ID
+    
+    if project_id is None:
+        project_id = 1  # 使用默认项目ID
+    
+    logger.info(f"正在删除用户 {user_id} 项目 {project_id} 的 ID 为 {shot_id} 的分镜并重新排序")
     try:
         # 查找要删除的分镜
         shot_to_delete = db.query(models.Shot).filter(models.Shot.shot_id == shot_id).first()
@@ -186,8 +210,8 @@ def delete_shot(db: Session, shot_id: int, user_id: int, project_id: int = None)
         raise
     except Exception as e:
         db.rollback()
-        log_exception(logger, f"删除分镜 ID {shot_id} 并重新排序失败: {str(e)}")
-        raise HTTPException(status_code=500, detail="删除分镜并重新排序失败")
+        log_exception(logger, f"删除分镜 ID {shot_id} 失败: {str(e)}")
+        raise HTTPException(status_code=500, detail="删除分镜失败")
 
 def insert_shot(db: Session, reference_shot_id: int, position: str, content: str, t2i_prompt: Optional[str] = None, user_id: int = None, project_id: int = None):
     """
@@ -195,17 +219,25 @@ def insert_shot(db: Session, reference_shot_id: int, position: str, content: str
     
     Args:
         db: 数据库会话
-        reference_shot_id: 参考分镜ID
-        position: 插入位置 ("above" 或 "below")
+        reference_shot_id: 参考分镜ID，插入位置的相对参考点
+        position: 插入位置 ('above' 或 'below')
         content: 新分镜内容
-        t2i_prompt: 可选的提示词
-        user_id: 用户ID，指定哪个用户的分镜顺序需要更新
-        project_id: 项目ID，可选
+        t2i_prompt: 提示词 (可选)
+        user_id: 用户ID，指定为哪个用户创建分镜
+        project_id: 项目ID，如果为None则使用默认项目ID 1
         
     Returns:
-        插入并重新排序后的分镜列表
+        更新后的分镜列表
     """
-    logger.info(f"用户 {user_id if user_id else '默认'} 项目 {project_id if project_id else '默认'} 请求在 ID {reference_shot_id} 的 {position} 插入分镜，内容: {content}, 提示词: {t2i_prompt}")
+    # 确保用户ID和项目ID不为空
+    if user_id is None:
+        user_id = 1  # 使用默认用户ID
+    
+    if project_id is None:
+        project_id = 1  # 使用默认项目ID
+    
+    logger.info(f"用户 {user_id} 项目 {project_id} 请求在 ID {reference_shot_id} 的 {position} 插入分镜，内容: {content}, 提示词: {t2i_prompt}")
+    
     try:
         # 查找参考分镜
         reference_shot = db.query(models.Shot).filter(models.Shot.shot_id == reference_shot_id).first()
@@ -245,17 +277,25 @@ def delete_all_shots(db: Session, user_id: int, project_id: int = None):
     Args:
         db: 数据库会话
         user_id: 用户ID，指定哪个用户的分镜顺序需要清空
-        project_id: 项目ID，可选
+        project_id: 项目ID，如果为None则使用默认项目ID 1
         
     Returns:
         删除的记录数
     """
-    logger.info(f"正在请求删除用户 {user_id} 项目 {project_id if project_id else '默认'} 的所有分镜")
+    # 确保用户ID和项目ID不为空
+    if user_id is None:
+        user_id = 1  # 使用默认用户ID
+    
+    if project_id is None:
+        project_id = 1  # 使用默认项目ID
+    
+    logger.info(f"正在请求删除用户 {user_id} 项目 {project_id} 的所有分镜")
     try:
         # 查询用户的分镜顺序
-        query = db.query(models.UserShot).filter(models.UserShot.user_id == user_id)
-        if project_id is not None:
-            query = query.filter(models.UserShot.project_id == project_id)
+        query = db.query(models.UserShot).filter(
+            models.UserShot.user_id == user_id,
+            models.UserShot.project_id == project_id
+        )
         user_shot = query.first()
         
         # 如果存在用户分镜顺序记录，则清空
@@ -273,14 +313,14 @@ def delete_all_shots(db: Session, user_id: int, project_id: int = None):
                 # 删除用户分镜关系记录
                 db.delete(user_shot)
             db.commit()
-            logger.info(f"成功删除用户 {user_id} 项目 {project_id if project_id else '默认'} 的 {deleted_count} 个分镜")
+            logger.info(f"成功删除用户 {user_id} 项目 {project_id} 的 {deleted_count} 个分镜")
             return deleted_count
         else:
-            logger.info(f"用户 {user_id} 项目 {project_id if project_id else '默认'} 没有分镜顺序记录，无需删除")
+            logger.info(f"用户 {user_id} 项目 {project_id} 没有分镜顺序记录，无需删除")
             return 0
     except Exception as e:
         db.rollback()
-        log_exception(logger, f"删除用户 {user_id} 项目 {project_id if project_id else '默认'} 的所有分镜失败: {str(e)}")
+        log_exception(logger, f"删除用户 {user_id} 项目 {project_id} 的所有分镜失败: {str(e)}")
         raise HTTPException(status_code=500, detail="删除所有分镜失败")
 
 def bulk_replace_shots(db: Session, shots_data: list, user_id: int, project_id: int = None):
@@ -291,12 +331,19 @@ def bulk_replace_shots(db: Session, shots_data: list, user_id: int, project_id: 
         db: 数据库会话
         shots_data: 包含分镜对象的列表 (例如来自 Pydantic 的 ShotBase)
         user_id: 用户ID，指定哪个用户的分镜需要替换
-        project_id: 项目ID，可选
+        project_id: 项目ID，如果为None则使用默认项目ID 1
         
     Returns:
         新创建的分镜列表
     """
-    logger.info(f"用户 {user_id} 项目 {project_id if project_id else '默认'} 正在批量替换所有分镜，共 {len(shots_data)} 条")
+    # 确保用户ID和项目ID不为空
+    if user_id is None:
+        user_id = 1  # 使用默认用户ID
+    
+    if project_id is None:
+        project_id = 1  # 使用默认项目ID
+    
+    logger.info(f"用户 {user_id} 项目 {project_id} 正在批量替换所有分镜，共 {len(shots_data)} 条")
     try:
         # 1. 删除所有现有分镜和排序
         delete_all_shots(db, user_id, project_id) # 复用删除所有分镜的逻辑

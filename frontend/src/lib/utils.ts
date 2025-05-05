@@ -36,6 +36,19 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}): Pro
     (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
   } else {
     console.warn('[fetchWithAuth] 警告: 无认证令牌');
+    // 如果不是登录或注册请求，可能需要重定向到登录页
+    if (!url.includes('/auth/login') && !url.includes('/auth/register') && !url.includes('/auth/login_or_register')) {
+      console.warn('[fetchWithAuth] 未授权请求，可能需要重定向到登录页');
+      // 在浏览器环境中重定向到登录页
+      if (typeof window !== 'undefined') {
+        // 使用setTimeout防止重定向循环
+        setTimeout(() => {
+          // 保存当前URL以便登录后返回
+          localStorage.setItem('redirectUrl', window.location.pathname + window.location.search);
+          window.location.href = '/login';
+        }, 0);
+      }
+    }
   }
   
   // 返回带认证头的fetch请求
@@ -47,6 +60,22 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}): Pro
     
     // 记录响应状态
     console.log(`[fetchWithAuth] 响应状态: ${response.status} ${response.statusText}`);
+    
+    // 检查是否是401未授权错误，可能是令牌过期
+    if (response.status === 401) {
+      console.error('[fetchWithAuth] 401未授权错误，可能是令牌已过期');
+      
+      // 清除过期的令牌
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_token_expiry');
+      
+      // 在浏览器环境中重定向到登录页
+      if (typeof window !== 'undefined') {
+        // 保存当前URL以便登录后返回
+        localStorage.setItem('redirectUrl', window.location.pathname + window.location.search);
+        window.location.href = '/login';
+      }
+    }
     
     return response;
   } catch (error) {
