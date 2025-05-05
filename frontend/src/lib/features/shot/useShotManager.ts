@@ -9,7 +9,8 @@ import {
   deleteAllShots as apiDeleteAllShots,
   replaceShotsFromText as apiReplaceShotsFromText
 } from './shotApi';
-import { createLLMService, Message, LLMService } from '../llm';
+// 我们已经不再使用LLM服务，这里只保留类型定义
+import type { LLMService } from '../llm';
 import { fetchWithAuth } from '@/lib/utils';
 
 export interface ShotMessage {
@@ -19,11 +20,11 @@ export interface ShotMessage {
 }
 
 // 存储当前使用的模型索引
-const modelIndexes = {
-  current: 0,  // 当前要使用哪个API
-  groq: 0,     // Groq模型列表索引
-  siliconflow: 0 // 硅基流动模型列表索引
-};
+// const modelIndexes = {
+//   current: 0,  // 当前要使用哪个API
+//   groq: 0,     // Groq模型列表索引
+//   siliconflow: 0 // 硅基流动模型列表索引
+// };
 
 // 缓存LLM客户端，避免重复创建
 const llmClientCache = {
@@ -134,79 +135,37 @@ export const useShotManager = () => {
         shot.shot_id === id ? { ...shot, ...updates } : shot
       )
     );
-    // 设置延迟保存
-    // setupAutoSave(id, updates); // 修改 setupAutoSave 以接受对象
     // 找到对应的shot，并合并更新
     const shotToSave = shots.find(s => s.shot_id === id);
     if (shotToSave) {
-      setupAutoSave(id, { ...shotToSave, ...updates });
-    }
-  }, [shots]); // 添加 shots 依赖
-
-  /**
-   * 设置自动保存定时器
-   */
-  const setupAutoSave = useCallback((id: number, shotData: Partial<Shot>) => {
-    // 如果已有定时器则清除
-    if (saveTimersRef.current[id]) {
-      clearTimeout(saveTimersRef.current[id]);
-    }
-    // 设置 3 秒后自动保存的定时器
-    saveTimersRef.current[id] = setTimeout(() => {
-      saveShot(id, shotData);
-      delete saveTimersRef.current[id];
-    }, 3000);
-  }, []); // 移除 saveShot 依赖，因为 saveShot 本身是 useCallback 且无依赖
-
-  /**
-   * 处理分镜文本框失焦事件，立即保存
-   */
-  const handleShotBlur = useCallback((id: number, updates: Partial<Pick<Shot, 'content' | 't2i_prompt'>>) => {
-    // 如果存在自动保存定时器，先清除
-    if (saveTimersRef.current[id]) {
-      clearTimeout(saveTimersRef.current[id]);
-      delete saveTimersRef.current[id];
-    }
-    // 立即触发保存
-    // 找到对应的shot，并合并更新
-    const shotToSave = shots.find(s => s.shot_id === id);
-    if (shotToSave) {
-        saveShot(id, { ...shotToSave, ...updates });
-    } else {
-        // 如果找不到 shot (理论上不应该发生)，只保存传入的更新
-        saveShot(id, updates)
-    }
-  }, [shots]); // 添加 shots 依赖
-
-  /**
-   * 获取或创建LLM客户端
-   */
-  const getLLMClient = useCallback((provider: 'groq' | 'siliconflow' | 'openai', apiKey: string): LLMService => {
-    // 检查是否需要重新创建客户端（API密钥变更）
-    if (provider === 'groq') {
-      if (!llmClientCache.groq || llmClientCache.groqApiKey !== apiKey) {
-        console.log("创建新的Groq LLM客户端");
-        llmClientCache.groq = createLLMService(apiKey, undefined);
-        llmClientCache.groqApiKey = apiKey;
+      // 设置延迟保存
+      if (saveTimersRef.current[id]) {
+        clearTimeout(saveTimersRef.current[id]);
       }
-      return llmClientCache.groq;
-    } else if (provider === 'siliconflow') {
-      if (!llmClientCache.siliconflow || llmClientCache.siliconflowApiKey !== apiKey) {
-        console.log("创建新的硅基流动LLM客户端");
-        llmClientCache.siliconflow = createLLMService(undefined, apiKey);
-        llmClientCache.siliconflowApiKey = apiKey;
-      }
-      return llmClientCache.siliconflow;
-    } else if (provider === 'openai') {
-      if (!llmClientCache.openai || llmClientCache.openaiApiKey !== apiKey) {
-        console.log("创建新的OpenAI LLM客户端");
-        llmClientCache.openai = createLLMService(undefined, apiKey);
-        llmClientCache.openaiApiKey = apiKey;
-      }
-      return llmClientCache.openai;
+      const autoSaveData = { ...shotToSave, ...updates };
+      saveTimersRef.current[id] = setTimeout(() => {
+        // 直接内联保存逻辑，而不是调用saveShot
+        console.log(`自动保存分镜 ${id}`);
+        setShotMessage({ id, message: "保存中...", type: 'success' });
+        
+        apiSaveShot(id, autoSaveData)
+          .then(() => {
+            // 显示成功消息
+            setShotMessage({ id, message: "已保存", type: 'success' });
+            // 3秒后清除消息
+            setTimeout(() => setShotMessage(prev => (prev?.id === id ? null : prev)), 3000);
+          })
+          .catch(error => {
+            console.error(`保存分镜 ${id} 失败:`, error);
+            setShotMessage({ id, message: "保存失败", type: 'error' });
+            // 失败消息也停留3秒
+            setTimeout(() => setShotMessage(prev => (prev?.id === id ? null : prev)), 3000);
+          });
+          
+        delete saveTimersRef.current[id];
+      }, 3000);
     }
-    throw new Error("Invalid provider");
-  }, []);
+  }, [shots]);
 
   /**
    * 保存单个分镜内容到后端
@@ -282,7 +241,27 @@ export const useShotManager = () => {
       setTimeout(() => setShotMessage(prev => (prev?.id === id ? null : prev)), 3000);
       throw error;
     }
-  }, [shots, getLLMClient]);
+  }, [shots]);
+
+  /**
+   * 处理分镜文本框失焦事件，立即保存
+   */
+  const handleShotBlur = useCallback((id: number, updates: Partial<Pick<Shot, 'content' | 't2i_prompt'>>) => {
+    // 如果存在自动保存定时器，先清除
+    if (saveTimersRef.current[id]) {
+      clearTimeout(saveTimersRef.current[id]);
+      delete saveTimersRef.current[id];
+    }
+    // 立即触发保存
+    // 找到对应的shot，并合并更新
+    const shotToSave = shots.find(s => s.shot_id === id);
+    if (shotToSave) {
+      saveShot(id, { ...shotToSave, ...updates });
+    } else {
+      // 如果找不到 shot (理论上不应该发生)，只保存传入的更新
+      saveShot(id, updates);
+    }
+  }, [shots, saveShot]);
 
   /**
    * 删除指定 ID 的分镜

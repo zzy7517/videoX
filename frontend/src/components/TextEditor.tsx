@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -21,7 +21,7 @@ const TextEditor: React.FC<TextEditorProps> = ({ onTextChange }) => {
     const API_BASE_URL = '/api';  // 使用Next.js代理，而不是直接访问后端
 
     // 加载文本内容
-    const loadContent = async () => {
+    const loadContent = useCallback(async () => {
         setError('');
         try {
             const response = await fetchWithAuth(`${API_BASE_URL}/text/`);
@@ -39,10 +39,10 @@ const TextEditor: React.FC<TextEditorProps> = ({ onTextChange }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [API_BASE_URL, onTextChange]);
 
     // 保存文本内容
-    const saveContent = async () => {
+    const saveContent = useCallback(async () => {
         setSaving(true);
         setError('');
         try {
@@ -59,7 +59,7 @@ const TextEditor: React.FC<TextEditorProps> = ({ onTextChange }) => {
         } finally {
             setSaving(false);
         }
-    };
+    }, [API_BASE_URL, content]);
 
     // 处理文本变化
     const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -71,7 +71,7 @@ const TextEditor: React.FC<TextEditorProps> = ({ onTextChange }) => {
     // 组件加载时获取内容
     useEffect(() => {
         loadContent();
-    }, []);
+    }, [loadContent]);
 
     // 自动保存功能（可选，这里设置为内容变化后1秒自动保存）
     useEffect(() => {
@@ -81,7 +81,7 @@ const TextEditor: React.FC<TextEditorProps> = ({ onTextChange }) => {
             }, 1000);
             return () => clearTimeout(timer);
         }
-    }, [content, loading]);
+    }, [content, loading, saveContent]);
 
     if (loading) {
         return <div className="text-center py-4">加载中...</div>;

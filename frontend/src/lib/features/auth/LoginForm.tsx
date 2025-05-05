@@ -34,7 +34,8 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       } else {
         if (onSuccess) onSuccess();
       }
-    } catch (err) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_err) {
       // 错误已由useAuth处理
     }
   };

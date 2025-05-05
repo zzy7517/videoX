@@ -126,7 +126,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // API现在会从本地存储自动获取token
         const user = await authApi.getCurrentUser();
         dispatch({ type: 'AUTH_SUCCESS', payload: { user, token } });
-      } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (_error) {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(TOKEN_EXPIRY_KEY);
         dispatch({ type: 'AUTH_FAILURE', payload: '会话已过期，请重新登录' });

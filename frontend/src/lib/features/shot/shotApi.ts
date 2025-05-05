@@ -55,7 +55,7 @@ export const addShot = async (): Promise<Shot[]> => {
     }
     
     // 获取后端返回的新创建的分镜
-    const newShot = await response.json();
+    await response.json(); // 读取响应体但不使用结果
     
     // 加载完整的分镜列表
     const updatedShots = await loadShots();

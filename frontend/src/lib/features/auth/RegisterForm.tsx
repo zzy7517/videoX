@@ -53,6 +53,7 @@ export function RegisterForm({ onSuccess, onLoginClick }: RegisterFormProps) {
     }
     
     // 排除确认密码字段
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { confirmPassword, ...registerData } = formData;
     
     await register(registerData);

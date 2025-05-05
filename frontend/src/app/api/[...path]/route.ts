@@ -235,8 +235,10 @@ export async function DELETE(
  * OPTIONS请求处理程序 - 用于处理CORS预检请求
  */
 export async function OPTIONS(
-  request: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _request: NextRequest,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  { params: _params }: { params: Promise<{ path: string[] }> }
 ) {
   // 返回CORS预检响应
   return new NextResponse(null, {

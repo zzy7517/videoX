@@ -32,7 +32,8 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
     try {
       const error = JSON.parse(errorText);
       errorMessage = error.detail || errorMessage;
-    } catch (e) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_e) {
       // 如果响应不是有效的JSON，使用默认错误消息
       console.error('登录响应解析失败:', errorText);
     }
@@ -63,7 +64,8 @@ export async function loginOrRegister(credentials: { email: string; password: st
     try {
       const error = JSON.parse(errorText);
       errorMessage = error.detail || errorMessage;
-    } catch (e) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_e) {
       console.error('响应解析失败:', errorText);
     }
     throw new Error(errorMessage);
@@ -121,7 +123,8 @@ export async function checkAuth(): Promise<boolean> {
   try {
     await getCurrentUser();
     return true;
-  } catch (error) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (_error) {
     return false;
   }
 } 
