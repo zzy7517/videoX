@@ -99,7 +99,7 @@ function ProjectsContent() {
   
   // 进入项目
   const goToProject = (projectId: number) => {
-    router.push(`/?projectId=${projectId}`)
+    router.push(`/editor?projectId=${projectId}`)
   }
   
   // 初始加载项目列表

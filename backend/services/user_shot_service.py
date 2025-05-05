@@ -38,7 +38,8 @@ def get_user_shots_order(db: Session, user_id:int, project_id:int=None):
             user_id=user_id,
             project_id=project_id,
             shots_order={},
-            script={}
+            script={},
+            characters={}
         )
         db.add(user_shot)
         db.commit()
