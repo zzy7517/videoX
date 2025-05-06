@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from ..logger import setup_logger, log_exception
 from . import user_shot_service
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 # 设置日志
 logger = setup_logger("backend.services.shot_service")
@@ -102,7 +102,7 @@ def create_shot(db: Session, content: str, t2i_prompt: Optional[str] = None, use
         log_exception(logger, f"创建分镜失败: {str(e)}")
         raise HTTPException(status_code=500, detail="创建分镜失败")
 
-def update_shot(db: Session, shot_id: int, content: Optional[str] = None, t2i_prompt: Optional[str] = None, user_id: int = None, project_id: int = None):
+def update_shot(db: Session, shot_id: int, content: Optional[str] = None, t2i_prompt: Optional[str] = None, user_id: int = None, project_id: int = None, characters: Optional[Dict[str, str]] = None):
     """
     更新指定ID分镜的内容和/或提示词
     
@@ -112,17 +112,20 @@ def update_shot(db: Session, shot_id: int, content: Optional[str] = None, t2i_pr
         content: 新的分镜内容 (可选)
         t2i_prompt: 新的提示词 (可选)
         user_id: 用户ID，用于获取更新后的分镜
-        project_id: 项目ID，如果为None则使用默认项目ID 1
+        project_id: 项目ID
+        characters: 角色信息字典 (可选)
         
     Returns:
         更新后的分镜对象
     """
     # 确保用户ID和项目ID不为空
     if user_id is None:
-        user_id = 1  # 使用默认用户ID
+        logger.error("更新分镜失败：未提供用户ID")
+        raise HTTPException(status_code=400, detail="更新分镜失败：必须提供用户ID")
     
     if project_id is None:
-        project_id = 1  # 使用默认项目ID
+        logger.error("更新分镜失败：未提供项目ID")
+        raise HTTPException(status_code=400, detail="更新分镜失败：必须提供项目ID")
     
     logger.info(f"用户 {user_id} 项目 {project_id} 正在更新 ID 为 {shot_id} 的分镜")
     try:
@@ -140,7 +143,10 @@ def update_shot(db: Session, shot_id: int, content: Optional[str] = None, t2i_pr
             db_shot.t2i_prompt = t2i_prompt
             updated = True
             logger.info(f"分镜 ID {shot_id} 提示词已更新")
-
+        if characters is not None:
+            db_shot.characters = characters
+            updated = True
+            logger.info(f"分镜 ID {shot_id} 角色信息已更新")
         if updated:
             db.commit()
             db.refresh(db_shot)

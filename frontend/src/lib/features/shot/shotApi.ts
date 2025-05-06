@@ -9,6 +9,7 @@ export interface Shot {
   order: number;   // 由后端维护的顺序
   content: string;
   t2i_prompt?: string; // 重命名 prompt 为 t2i_prompt
+  characters?: string[]; // 分镜相关角色列表
 }
 
 /**
@@ -186,22 +187,25 @@ export const addShot = async (projectId: number): Promise<Shot[]> => {
 /**
  * 保存单个分镜内容到后端
  * @param shot_id 分镜的数据库 ID
- * @param shotData 包含要更新字段的对象 (例如 { content: '...', t2iprompt: '...' })
+ * @param shotData 包含要更新字段的对象 (例如 { content: '...', t2i_prompt: '...', characters: [...] })
  * @param projectId 项目ID
  */
-export const saveShot = async (shot_id: number, shotData: Partial<Pick<Shot, 'content' | 't2i_prompt'>>, projectId: number): Promise<void> => {
+export const saveShot = async (shot_id: number, shotData: Partial<Pick<Shot, 'content' | 't2i_prompt' | 'characters'>>, projectId: number): Promise<void> => {
   if (!projectId) {
     console.error('调用saveShot必须提供有效的projectId');
     return;
   }
   
-  // 过滤掉值为 undefined 或 null 的字段，避免发送不必要的更新
-  const updatePayload: Partial<Pick<Shot, 'content' | 't2i_prompt'>> = {};
-  if (shotData.content !== undefined && shotData.content !== null) {
+  // 过滤掉值为 undefined 的字段，避免发送不必要的更新
+  const updatePayload: Partial<Pick<Shot, 'content' | 't2i_prompt' | 'characters'>> = {};
+  if (shotData.content !== undefined) {
     updatePayload.content = shotData.content;
   }
-  if (shotData.t2i_prompt !== undefined && shotData.t2i_prompt !== null) {
+  if (shotData.t2i_prompt !== undefined) {
     updatePayload.t2i_prompt = shotData.t2i_prompt;
+  }
+  if (shotData.characters !== undefined) {
+    updatePayload.characters = shotData.characters;
   }
 
   // 如果没有有效字段需要更新，则不发送请求

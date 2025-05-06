@@ -287,7 +287,7 @@ export const useShotManager = () => {
   /**
    * 更新本地分镜状态（用于输入时的即时反馈）
    */
-  const updateShotLocal = useCallback((id: number, updates: Partial<Pick<Shot, 'content' | 't2i_prompt'>>) => {
+  const updateShotLocal = useCallback((id: number, updates: Partial<Pick<Shot, 'content' | 't2i_prompt' | 'characters'>>) => {
     setShots(prev =>
       prev.map(shot =>
         shot.shot_id === id ? { ...shot, ...updates } : shot
@@ -307,11 +307,28 @@ export const useShotManager = () => {
       if (saveTimersRef.current[id]) {
         clearTimeout(saveTimersRef.current[id]);
       }
+      
       const autoSaveData = { ...shotToSave, ...updates };
+      
+      // 判断是否需要生成提示词
+      let shouldGeneratePrompt = false;
+      
+      // 与saveShot函数类似的逻辑
+      if (updates.content && 
+         ((!shotToSave.t2i_prompt || shotToSave.t2i_prompt === "") && 
+          !('t2i_prompt' in updates && updates.t2i_prompt === "") ||
+          (updates.content !== shotToSave.content && !('t2i_prompt' in updates)))) {
+        shouldGeneratePrompt = true;
+      }
+      
       saveTimersRef.current[id] = setTimeout(() => {
         // 直接内联保存逻辑，而不是调用saveShot
         console.log(`自动保存分镜 ${id}`);
         setShotMessage({ id, message: "保存中...", type: 'success' });
+        
+        if (shouldGeneratePrompt) {
+          console.log("自动保存时需要生成文生图提示词");
+        }
         
         apiSaveShot(id, autoSaveData, currentProjectId)
           .then(() => {
@@ -333,10 +350,9 @@ export const useShotManager = () => {
   }, [shots, currentProjectId]);
 
   /**
-   * 保存单个分镜内容到后端
+   * 手动保存分镜内容到后端
    */
-  const saveShot = useCallback(async (id: number, shotData: Partial<Pick<Shot, 'content' | 't2i_prompt'>>) => {
-    // 确保有projectId才能保存
+  const saveShot = useCallback(async (id: number, updates: Partial<Pick<Shot, 'content' | 't2i_prompt' | 'characters'>>) => {
     if (!currentProjectId) {
       console.error("未选择项目，无法保存分镜");
       return;
@@ -353,13 +369,13 @@ export const useShotManager = () => {
       
       // 修改判断逻辑：
       // 1. 如果内容有更新且当前提示词为空或未定义，生成新提示词
-      // 2. 如果用户明确删除了提示词（shotData中有t2i_prompt字段但值为空字符串），则不重新生成
-      if (shotData.content && 
+      // 2. 如果用户明确删除了提示词（updates中有t2i_prompt字段但值为空字符串），则不重新生成
+      if (updates.content && 
          ((!currentShot?.t2i_prompt || currentShot.t2i_prompt === "") && 
-          // 检查shotData是否包含t2i_prompt字段且值为空字符串（用户主动删除）
-          !('t2i_prompt' in shotData && shotData.t2i_prompt === "") ||
+          // 检查updates是否包含t2i_prompt字段且值为空字符串（用户主动删除）
+          !('t2i_prompt' in updates && updates.t2i_prompt === "") ||
           // 内容变更且没有明确设置提示词
-          (shotData.content !== currentShot?.content && !('t2i_prompt' in shotData)))) {
+          (updates.content !== currentShot?.content && !('t2i_prompt' in updates)))) {
         shouldGeneratePrompt = true;
       }
       
@@ -367,40 +383,29 @@ export const useShotManager = () => {
         console.log("需要生成文生图提示词");
       } else {
         console.log("跳过生成文生图提示词：", 
-          'shotData包含t2i_prompt字段:', 't2i_prompt' in shotData,
-          '提示词值:', shotData.t2i_prompt);
+          'updates包含t2i_prompt字段:', 't2i_prompt' in updates,
+          '提示词值:', updates.t2i_prompt);
       }
 
       // 等待API保存分镜内容
-      await apiSaveShot(id, shotData, currentProjectId);
+      await apiSaveShot(id, updates, currentProjectId);
         
       // 保存成功
       setShotMessage({ id, message: "已保存", type: 'success' });
-      
-      // 3秒后清除消息提示
-      setTimeout(() => {
-        setShotMessage(null);
-      }, 3000);
-      
+      // 3秒后清除消息
+      setTimeout(() => setShotMessage(prev => (prev?.id === id ? null : prev)), 3000);
     } catch (error) {
       console.error(`保存分镜 ${id} 失败:`, error);
       setShotMessage({ id, message: "保存失败", type: 'error' });
-      
-      const errorMsg = error instanceof Error ? error.message : "保存分镜失败";
-      setError(errorMsg);
-      clearError();
-      
-      // 5秒后清除错误消息
-      setTimeout(() => {
-        setShotMessage(null);
-      }, 5000);
+      // 失败消息也停留3秒
+      setTimeout(() => setShotMessage(prev => (prev?.id === id ? null : prev)), 3000);
     }
-  }, [shots, clearError, currentProjectId]);
+  }, [shots, currentProjectId]);
 
   /**
-   * 处理分镜文本框失焦事件，立即保存
+   * 分镜输入框失焦事件处理
    */
-  const handleShotBlur = useCallback((id: number, updates: Partial<Pick<Shot, 'content' | 't2i_prompt'>>) => {
+  const handleShotBlur = useCallback((id: number, updates: Partial<Pick<Shot, 'content' | 't2i_prompt' | 'characters'>>) => {
     // 如果存在自动保存定时器，先清除
     if (saveTimersRef.current[id]) {
       clearTimeout(saveTimersRef.current[id]);

@@ -38,6 +38,7 @@ class ShotBase(BaseModel):
     """分镜基础模型 (content 字段和可选的 t2i_prompt)"""
     content: str
     t2i_prompt: Optional[str] = None  # 文生图提示词（可选）
+    characters: Optional[List[str]] = None  # 分镜角色列表（可选，可多选）
 
 class ShotCreate(ShotBase):
     """用于创建新分镜的请求模型 (总是添加到末尾)"""
@@ -47,6 +48,7 @@ class ShotUpdate(BaseModel):
     """分镜更新模型"""
     content: str
     t2i_prompt: Optional[str] = None
+    characters: Optional[List[str]] = None  # 分镜角色列表（可选，可多选）
 
 class ScriptUpdate(BaseModel):
     """剧本更新模型"""
@@ -554,7 +556,7 @@ async def update_shot(
     
     logger.info(f"用户 {user_id if user_id else '未登录'} 更新项目 {project_id} 的分镜 {shot_id}")
     
-    return shot_service.update_shot(db, shot_id, shot.content, shot.t2i_prompt, user_id, project_id)
+    return shot_service.update_shot(db, shot_id, shot.content, shot.t2i_prompt, user_id, project_id, shot.characters)
 
 @main_router.delete("/shots/{shot_id}", response_model=List[ShotResponse])
 async def delete_shot(

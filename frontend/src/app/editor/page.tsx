@@ -383,6 +383,7 @@ function EditorContent() {
             <TabsContent value="storyboard">
               <StoryboardEditor
                 shots={shots}
+                characters={characters}
                 isLoadingShots={isLoadingShots}
                 shotMessage={shotMessage}
                 isDeletingAllShots={isDeletingAllShots}

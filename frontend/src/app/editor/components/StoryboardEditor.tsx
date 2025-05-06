@@ -7,6 +7,7 @@ interface Shot {
   order: number;
   content: string;
   t2i_prompt?: string;
+  characters?: string[];
 }
 
 interface ShotMessage {
@@ -17,6 +18,7 @@ interface ShotMessage {
 
 interface StoryboardEditorProps {
   shots: Shot[];
+  characters: {[key: string]: string};
   isLoadingShots: boolean;
   shotMessage: ShotMessage | null;
   isDeletingAllShots: boolean;
@@ -33,6 +35,7 @@ interface StoryboardEditorProps {
 
 export function StoryboardEditor({
   shots,
+  characters,
   isLoadingShots,
   shotMessage,
   isDeletingAllShots,
@@ -136,6 +139,55 @@ export function StoryboardEditor({
                   className="min-h-[120px] bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-purple-500/20 transition-all mb-3"
                   disabled={isInsertingShot !== null || isDeletingShot !== null || isBulkUpdating}
                 />
+                
+                {/* 角色选择区域 */}
+                <div className="mb-3">
+                  <p className="text-sm font-medium mb-2 text-slate-700 dark:text-slate-300">分镜角色：</p>
+                  
+                  <div className="flex flex-wrap gap-1">
+                    {Object.keys(characters).map((charName) => {
+                      const isSelected = (shot.characters || []).includes(charName);
+                      return (
+                        <button
+                          key={charName}
+                          type="button"
+                          disabled={isInsertingShot !== null || isDeletingShot !== null || isBulkUpdating}
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border transition-colors
+                            ${isSelected 
+                              ? 'bg-purple-100 border-purple-300 text-purple-800 dark:bg-purple-900/30 dark:border-purple-700 dark:text-purple-300'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-700'}
+                          `}
+                          onClick={() => {
+                            const currentChars = shot.characters || [];
+                            let updatedChars;
+                            
+                            if (isSelected) {
+                              // 如果已选中，则移除
+                              updatedChars = currentChars.filter(c => c !== charName);
+                            } else {
+                              // 如果未选中，则添加
+                              updatedChars = [...currentChars, charName];
+                            }
+                            
+                            updateShotLocal(shot.shot_id, { characters: updatedChars });
+                            handleShotBlur(shot.shot_id, { characters: updatedChars });
+                          }}
+                        >
+                          {charName}
+                          {isSelected && (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="ml-1">
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
+                    {Object.keys(characters).length === 0 && (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">暂无角色，请在角色标签页添加角色</span>
+                    )}
+                  </div>
+                </div>
+                
                 {/* 提示词文本框 */}
                 <Textarea
                   value={shot.t2i_prompt || ""}

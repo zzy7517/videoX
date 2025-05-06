@@ -1,5 +1,5 @@
 """分镜模型"""
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, Integer, String, DateTime, JSON
 from datetime import datetime, timezone
 from .base import Base
 
@@ -12,6 +12,7 @@ class Shot(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     t2i_prompt = Column(String, nullable=True)
+    characters = Column(JSON, nullable=True)  # 存储角色列表，可多选
 
     class Config:
         orm_mode = True
