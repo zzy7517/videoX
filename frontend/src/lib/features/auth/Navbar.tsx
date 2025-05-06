@@ -5,7 +5,7 @@
  * 
  * 显示应用标题、登录按钮或用户菜单
  */
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuth } from './authContext';
 import { AuthModal } from './AuthModal';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
@@ -137,6 +137,40 @@ export function Navbar({ title = 'VideoX' }: NavbarProps) {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showUserMenu]);
+
+  // 处理保存设置的函数
+  const handleSaveSettings = useCallback(async () => {
+    setSaveButtonClicked(true);
+    try {
+      // 保存设置到服务器
+      const success = await saveTextContent();
+      
+      // 同时保存到localStorage
+      try {
+        const localSettings = {
+          openaiApiKey: openaiApiKey || '',
+          openaiUrl: openaiUrl || '',
+          openaiModel: model || 'gpt-3.5-turbo',
+          groqApiKey: groqApiKey || '',
+          groqModels: groqModels || '',
+          siliconFlowApiKey: siliconFlowApiKey || '',
+          siliconFlowModels: siliconFlowModels || ''
+        };
+        localStorage.setItem('video_editor_settings', JSON.stringify(localSettings));
+        console.log('快速设置已保存到本地存储');
+      } catch (e) {
+        console.error('保存快速设置到本地存储失败:', e);
+      }
+      
+      if (success) {
+        setSettingsDialogOpen(false);
+        setSaveButtonClicked(false);
+      }
+    } catch (error) {
+      console.error("保存设置失败:", error);
+      setSaveButtonClicked(false);
+    }
+  }, [saveTextContent, openaiApiKey, openaiUrl, model, groqApiKey, groqModels, siliconFlowApiKey, siliconFlowModels]);
 
   return (
     <>
@@ -443,12 +477,7 @@ export function Navbar({ title = 'VideoX' }: NavbarProps) {
                     <DialogFooter className="flex flex-wrap gap-3 justify-end mt-6 pt-4 border-t relative">
                         <Button
                             variant="outline"
-                            onClick={() => {
-                              // 直接调用保存函数，让useConfigManager中的逻辑处理API密钥验证
-                              // 在内部实现中，未修改的API密钥将被自动视为已验证
-                              saveTextContent();
-                              setSaveButtonClicked(false);
-                            }}
+                            onClick={handleSaveSettings}
                             disabled={isSaving || isLoading || isValidatingGroq || isValidatingSiliconFlow || isValidatingOpenAI}
                             className="hover:bg-slate-100 dark:hover:bg-slate-700"
                         >

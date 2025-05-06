@@ -214,6 +214,47 @@ export const useTextManager = () => {
           setOpenAIKeyValid(true);
           setOpenAIKeyInvalid(false);
         }
+      } else {
+        // 如果数据库中没有设置，尝试从localStorage中读取
+        try {
+          const localSettings = localStorage.getItem('video_editor_settings');
+          if (localSettings) {
+            const parsedSettings = JSON.parse(localSettings);
+            
+            // 使用本地保存的设置更新状态
+            if (parsedSettings.openaiApiKey) {
+              setOpenaiApiKey(parsedSettings.openaiApiKey);
+              setInitialOpenAIApiKey(parsedSettings.openaiApiKey);
+              setOpenAIKeyValid(true);
+              setOpenAIKeyInvalid(false);
+              console.log("从本地存储加载OpenAI API密钥");
+            }
+            
+            if (parsedSettings.openaiUrl) {
+              setOpenaiUrl(parsedSettings.openaiUrl);
+            }
+            
+            if (parsedSettings.openaiModel) {
+              setModel(parsedSettings.openaiModel);
+            }
+            
+            if (parsedSettings.groqApiKey) {
+              setGroqApiKey(parsedSettings.groqApiKey);
+              setInitialGroqApiKey(parsedSettings.groqApiKey);
+              setGroqKeyValid(true);
+              setGroqKeyInvalid(false);
+            }
+            
+            if (parsedSettings.siliconFlowApiKey) {
+              setSiliconFlowApiKey(parsedSettings.siliconFlowApiKey);
+              setInitialSiliconFlowApiKey(parsedSettings.siliconFlowApiKey);
+              setSiliconFlowKeyValid(true);
+              setSiliconFlowKeyInvalid(false);
+            }
+          }
+        } catch (e) {
+          console.error("从本地存储加载设置失败:", e);
+        }
       }
       
       return { 
@@ -433,6 +474,23 @@ export const useTextManager = () => {
       
       // 保存成功后重置LLM客户端缓存，确保使用最新的API密钥
       resetLLMClientCache();
+      
+      // 同时保存设置到localStorage，以便客户端功能使用
+      try {
+        const localSettings = {
+          openaiApiKey: openaiApiKey || '',
+          openaiUrl: openaiUrl || '',
+          openaiModel: model || 'gpt-3.5-turbo',
+          groqApiKey: groqApiKey || '',
+          groqModels: groqModels || '',
+          siliconFlowApiKey: siliconFlowApiKey || '',
+          siliconFlowModels: siliconFlowModels || ''
+        };
+        localStorage.setItem('video_editor_settings', JSON.stringify(localSettings));
+        console.log('设置已保存到本地存储');
+      } catch (e) {
+        console.error('保存设置到本地存储失败:', e);
+      }
       
       return true;
     } catch (error) {
