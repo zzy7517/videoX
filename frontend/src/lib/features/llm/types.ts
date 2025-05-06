@@ -1,4 +1,4 @@
-export type LLMProvider = 'groq' | 'siliconflow';
+export type LLMProvider = 'groq' | 'siliconflow' | 'openai';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';

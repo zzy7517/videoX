@@ -1,4 +1,4 @@
-import { GroqClient, SiliconFlowClient } from './clients';
+import { GroqClient, SiliconFlowClient, OpenAIClient } from './clients';
 import { LLMClient, LLMProvider, LLMRequestOptions, LLMResponse, Message } from './types';
 
 /**
@@ -9,11 +9,15 @@ export class LLMService {
   private defaultProvider: LLMProvider = 'groq';
   private groqApiKey?: string;
   private siliconflowApiKey?: string;
+  private openaiApiKey?: string;
+  private openaiBaseURL?: string;
 
-  constructor(groqApiKey?: string, siliconflowApiKey?: string) {
+  constructor(groqApiKey?: string, siliconflowApiKey?: string, openaiApiKey?: string, openaiBaseURL?: string) {
     // 保存API密钥，但不立即创建客户端
     this.groqApiKey = groqApiKey;
     this.siliconflowApiKey = siliconflowApiKey;
+    this.openaiApiKey = openaiApiKey;
+    this.openaiBaseURL = openaiBaseURL;
     
     // 只初始化有API密钥的客户端
     if (groqApiKey) {
@@ -25,6 +29,14 @@ export class LLMService {
       // 如果没有Groq API密钥但有硅基流动API密钥，则默认使用硅基流动
       if (!groqApiKey) {
         this.defaultProvider = 'siliconflow';
+      }
+    }
+    
+    if (openaiApiKey) {
+      this.clients.openai = new OpenAIClient(openaiApiKey, openaiBaseURL);
+      // 如果没有其他API密钥但有OpenAI API密钥，则默认使用OpenAI
+      if (!groqApiKey && !siliconflowApiKey) {
+        this.defaultProvider = 'openai';
       }
     }
   }
@@ -93,9 +105,11 @@ export class LLMService {
 // 默认导出创建LLM服务的函数
 export function createLLMService(
   groqApiKey?: string,
-  siliconflowApiKey?: string
+  siliconflowApiKey?: string,
+  openaiApiKey?: string,
+  openaiBaseURL?: string
 ): LLMService {
-  return new LLMService(groqApiKey, siliconflowApiKey);
+  return new LLMService(groqApiKey, siliconflowApiKey, openaiApiKey, openaiBaseURL);
 }
 
 // 导出类型

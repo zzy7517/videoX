@@ -355,9 +355,28 @@ export const replaceShotsFromText = async (textContent: string, projectId: numbe
         throw new Error("文本内容分割后为空");
     }
 
+    // 首先获取当前项目信息以保存原有的剧本和角色信息
+    let script = "";
+    let characters = {};
+    
+    try {
+        const projectInfo = await getProjectInfo(projectId);
+        script = projectInfo.script || "";
+        characters = projectInfo.characters || {};
+        console.log('保留原有剧本和角色信息成功', {
+            scriptLength: script.length,
+            charactersCount: Object.keys(characters).length
+        });
+    } catch (error) {
+        console.error('获取原有项目信息失败，无法保留剧本和角色:', error);
+        // 继续执行，使用空值
+    }
+
     // 准备批量更新的数据格式
     const bulkUpdateData = {
-        shots: lines.map(content => ({ content: content.trim() }))
+        shots: lines.map(content => ({ content: content.trim() })),
+        script: script,
+        characters: characters
     };
 
     // 构建URL

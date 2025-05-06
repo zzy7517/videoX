@@ -100,6 +100,7 @@ function EditorContent() {
     deleteShot,
     insertShot,
     deleteAllShots,
+    replaceShotsFromText,
   } = useShotManager();
 
   // 确保当前项目ID与URL参数一致
@@ -379,13 +380,28 @@ function EditorContent() {
                       </p>
                     )}
                     
-                    <div className="pt-2">
-                      <Button 
-                        onClick={saveScript}
-                        disabled={isUpdatingScript || isLoadingShots}
-                        variant="default"
+                    <div className="pt-2 flex justify-center">
+                      <Button
+                        onClick={() => {
+                          if (script && script.trim() !== "") {
+                            if (confirm("此操作将把剧本按行拆分成分镜，每行文本将转为一个分镜。确定继续吗？")) {
+                              replaceShotsFromText(script);
+                              setActiveTab("storyboard");
+                            }
+                          } else {
+                            alert("剧本内容为空，无法拆分");
+                          }
+                        }}
+                        disabled={isUpdatingScript || isLoadingShots || isBulkUpdating || !script || script.trim() === ""}
+                        variant="outline"
+                        className="bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200 hover:text-amber-800"
                       >
-                        {isUpdatingScript ? "保存中..." : "立即保存剧本"}
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
+                          <line x1="21" y1="6" x2="3" y2="6"></line>
+                          <line x1="21" y1="12" x2="3" y2="12"></line>
+                          <line x1="21" y1="18" x2="3" y2="18"></line>
+                        </svg>
+                        拆分为分镜
                       </Button>
                     </div>
                   </div>
@@ -489,16 +505,6 @@ function EditorContent() {
                         正在保存角色信息...
                       </p>
                     )}
-                    
-                    <div className="pt-2">
-                      <Button 
-                        onClick={saveCharacters}
-                        disabled={isUpdatingCharacters || isLoadingShots}
-                        variant="default"
-                      >
-                        {isUpdatingCharacters ? "保存中..." : "保存角色信息"}
-                      </Button>
-                    </div>
                   </div>
                 </CardContent>
               </Card>

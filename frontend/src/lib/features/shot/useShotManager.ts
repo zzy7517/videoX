@@ -17,6 +17,7 @@ import {
 } from './shotApi';
 // 我们已经不再使用LLM服务，这里只保留类型定义
 import type { LLMService } from '../llm';
+import { createLLMService } from '../llm';
 import { fetchWithAuth } from '@/lib/utils';
 
 export interface ShotMessage {
@@ -63,6 +64,78 @@ export const resetLLMClientCache = (provider?: 'groq' | 'siliconflow' | 'openai'
     console.log('重置OpenAI LLM客户端缓存');
     llmClientCache.openai = null;
     llmClientCache.openaiApiKey = "";
+  }
+};
+
+/**
+ * 获取LLM客户端
+ * 从缓存中获取或创建新的客户端实例
+ * @param provider LLM提供商
+ * @param groqApiKey Groq API密钥
+ * @param siliconFlowApiKey 硅基流动API密钥
+ * @param openaiApiKey OpenAI API密钥
+ * @param openaiBaseURL OpenAI基础URL
+ * @returns LLM服务实例
+ */
+export const getLLMClient = (
+  provider: 'groq' | 'siliconflow' | 'openai', 
+  groqApiKey: string = '', 
+  siliconFlowApiKey: string = '',
+  openaiApiKey: string = '',
+  openaiBaseURL?: string
+): LLMService | null => {
+  // 根据提供商选择和验证API密钥
+  switch (provider) {
+    case 'groq':
+      // 如果没有API密钥，返回null
+      if (!groqApiKey) {
+        console.error('缺少Groq API密钥');
+        return null;
+      }
+      
+      // 如果密钥与缓存中的不同或缓存为空，创建新实例
+      if (!llmClientCache.groq || llmClientCache.groqApiKey !== groqApiKey) {
+        console.log('创建新的Groq LLM客户端');
+        llmClientCache.groq = createLLMService(groqApiKey, '', '', '');
+        llmClientCache.groqApiKey = groqApiKey;
+      }
+      
+      return llmClientCache.groq;
+      
+    case 'siliconflow':
+      // 如果没有API密钥，返回null
+      if (!siliconFlowApiKey) {
+        console.error('缺少硅基流动API密钥');
+        return null;
+      }
+      
+      // 如果密钥与缓存中的不同或缓存为空，创建新实例
+      if (!llmClientCache.siliconflow || llmClientCache.siliconflowApiKey !== siliconFlowApiKey) {
+        console.log('创建新的硅基流动LLM客户端');
+        llmClientCache.siliconflow = createLLMService('', siliconFlowApiKey, '', '');
+        llmClientCache.siliconflowApiKey = siliconFlowApiKey;
+      }
+      
+      return llmClientCache.siliconflow;
+      
+    case 'openai':
+      // 如果没有API密钥，返回null
+      if (!openaiApiKey) {
+        console.error('缺少OpenAI API密钥');
+        return null;
+      }
+      
+      // 如果密钥与缓存中的不同或缓存为空，创建新实例
+      if (!llmClientCache.openai || llmClientCache.openaiApiKey !== openaiApiKey) {
+        console.log('创建新的OpenAI LLM客户端');
+        llmClientCache.openai = createLLMService('', '', openaiApiKey, openaiBaseURL);
+        llmClientCache.openaiApiKey = openaiApiKey;
+      }
+      
+      return llmClientCache.openai;
+      
+    default:
+      return null;
   }
 };
 

@@ -110,4 +110,54 @@ export class SiliconFlowClient implements LLMClient {
       throw error;
     }
   }
+}
+
+// OpenAI 客户端实现
+export class OpenAIClient implements LLMClient {
+  private client: OpenAI;
+
+  constructor(apiKey?: string, baseURL?: string) {
+    this.client = new OpenAI({
+      apiKey: apiKey || process.env.NEXT_PUBLIC_OPENAI_API_KEY,
+      baseURL: baseURL || process.env.NEXT_PUBLIC_OPENAI_BASE_URL || 'https://api.openai.com/v1',
+      dangerouslyAllowBrowser: true // 允许在浏览器环境中运行，注意API密钥安全风险
+    });
+  }
+
+  async generate(options: LLMRequestOptions): Promise<LLMResponse> {
+    if (!options.model) {
+      throw new Error('必须指定模型名称');
+    }
+    
+    try {
+      // 确保stream为false
+      const streamOption = options.stream === true ? false : false;
+      
+      const completion = await this.client.chat.completions.create({
+        model: options.model,
+        messages: options.messages,
+        temperature: options.temperature ?? 1.0,
+        max_tokens: options.maxTokens,
+        top_p: options.topP,
+        frequency_penalty: options.frequencyPenalty,
+        presence_penalty: options.presencePenalty,
+        stop: options.stopSequences,
+        stream: streamOption,
+      });
+
+      return {
+        text: completion.choices[0]?.message.content || '',
+        provider: 'openai' as LLMProvider,
+        model: options.model,
+        usage: {
+          promptTokens: completion.usage?.prompt_tokens || 0,
+          completionTokens: completion.usage?.completion_tokens || 0,
+          totalTokens: completion.usage?.total_tokens || 0,
+        },
+      };
+    } catch (error) {
+      console.error('OpenAI API Error:', error);
+      throw error;
+    }
+  }
 } 

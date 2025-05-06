@@ -96,6 +96,8 @@ class InsertShotRequest(BaseModel):
 class BulkUpdateRequest(BaseModel):
     """批量替换所有分镜的请求模型 (用于文本导入)"""
     shots: List[ShotBase] # 要替换成的新分镜列表，现在包含 t2i_prompt
+    script: Optional[str] = None # 保留原有剧本内容
+    characters: Optional[Dict[str, str]] = {} # 保留原有角色信息
 
 # --- 项目相关模型 ---
 class ProjectResponse(BaseModel):
@@ -407,6 +409,7 @@ async def bulk_replace_shots(
     先删除所有现有分镜，然后根据请求列表创建新的分镜，并按顺序分配 order。
     常用于文本导入分割后的场景。
     可以通过project_id参数指定项目。
+    可以保留原有的剧本和角色信息。
     """
     # 确保project_id不为None
     if project_id is None:
@@ -417,7 +420,22 @@ async def bulk_replace_shots(
     user_id = user.user_id if user else None
     
     logger.info(f"用户 {user_id if user_id else '未登录'} 批量替换项目 {project_id} 的 {len(request_data.shots)} 个分镜")
-    return shot_service.bulk_replace_shots(db, request_data.shots, user_id, project_id)
+    
+    # 记录是否保留了剧本和角色信息
+    has_script = request_data.script is not None
+    has_characters = request_data.characters is not None and len(request_data.characters) > 0
+    
+    if has_script or has_characters:
+        logger.info(f"将保留原有内容: 剧本={has_script}, 角色信息={has_characters}")
+    
+    return shot_service.bulk_replace_shots(
+        db, 
+        request_data.shots, 
+        user_id, 
+        project_id,
+        script=request_data.script,
+        characters=request_data.characters
+    )
 
 @main_router.put("/shots/script", response_model=Dict[str, str])
 async def update_script(
@@ -562,7 +580,7 @@ async def delete_shot(
     
     return shot_service.delete_shot(db, shot_id, user_id, project_id)
 
-@main_router.post("/shots/insert/", response_model=List[ShotResponse])
+@main_router.post("/shots/insert", response_model=List[ShotResponse])
 async def insert_shot(
     request_data: InsertShotRequest, 
     request: Request, 

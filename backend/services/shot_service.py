@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from ..logger import setup_logger, log_exception
 from . import user_shot_service
-from typing import Optional
+from typing import Optional, Dict
 
 # 设置日志
 logger = setup_logger("backend.services.shot_service")
@@ -323,7 +323,7 @@ def delete_all_shots(db: Session, user_id: int, project_id: int = None):
         log_exception(logger, f"删除用户 {user_id} 项目 {project_id} 的所有分镜失败: {str(e)}")
         raise HTTPException(status_code=500, detail="删除所有分镜失败")
 
-def bulk_replace_shots(db: Session, shots_data: list, user_id: int, project_id: int = None):
+def bulk_replace_shots(db: Session, shots_data: list, user_id: int, project_id: int = None, script: Optional[str] = None, characters: Optional[Dict[str, str]] = None):
     """
     批量替换所有分镜
     
@@ -332,6 +332,8 @@ def bulk_replace_shots(db: Session, shots_data: list, user_id: int, project_id: 
         shots_data: 包含分镜对象的列表 (例如来自 Pydantic 的 ShotBase)
         user_id: 用户ID，指定哪个用户的分镜需要替换
         project_id: 项目ID，如果为None则使用默认项目ID 1
+        script: 要保留的剧本内容（可选）
+        characters: 要保留的角色信息（可选）
         
     Returns:
         新创建的分镜列表
@@ -345,11 +347,28 @@ def bulk_replace_shots(db: Session, shots_data: list, user_id: int, project_id: 
     
     logger.info(f"用户 {user_id} 项目 {project_id} 正在批量替换所有分镜，共 {len(shots_data)} 条")
     try:
+        # 如果需要保留剧本和角色信息，先获取当前用户的分镜记录
+        user_shot_record = None
+        if script is not None or characters is not None:
+            user_shot_record = user_shot_service.get_user_shots_order(db, user_id, project_id)
+        
         # 1. 删除所有现有分镜和排序
         delete_all_shots(db, user_id, project_id) # 复用删除所有分镜的逻辑
         logger.info("旧分镜和排序已清除")
+        
+        # 重新获取或创建用户分镜记录
+        user_shot = user_shot_service.get_user_shots_order(db, user_id, project_id)
+        
+        # 2. 保存原有的剧本和角色信息
+        if script is not None:
+            user_shot.script = script
+            logger.info(f"保留原有剧本，长度: {len(script)}")
+        
+        if characters is not None:
+            user_shot.characters = characters
+            logger.info(f"保留原有角色信息，共 {len(characters)} 个角色")
 
-        # 2. 创建新分镜
+        # 3. 创建新分镜
         new_shots_db = []
         shot_order_mapping = {}
         order_counter = 1
@@ -364,7 +383,7 @@ def bulk_replace_shots(db: Session, shots_data: list, user_id: int, project_id: 
             shot_order_mapping[str(new_shot.shot_id)] = order_counter
             order_counter += 1
         
-        # 3. 更新用户分镜排序
+        # 4. 更新用户分镜排序
         user_shot_service.set_shot_order(db, shot_order_mapping, user_id, project_id)
 
         db.commit() # 提交所有更改
