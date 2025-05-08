@@ -16,7 +16,7 @@ import { CharacterEditor } from './components/CharacterEditor';
 import { StoryboardEditor } from './components/StoryboardEditor';
 
 // 导入常量
-import { DEFAULT_SYSTEM_PROMPT } from './constants';
+import { DEFAULT_SYSTEM_PROMPT, DEFAULT_STORYBOARD_PROMPT } from './constants';
 
 /**
  * 分镜编辑页面
@@ -75,6 +75,10 @@ function EditorContent() {
   // 添加系统提示和提取角色相关状态
   const [systemPrompt, setSystemPrompt] = useState<string>("");
   const [isExtractingCharacters, setIsExtractingCharacters] = useState(false);
+  
+  // 添加分镜提取相关状态
+  const [storyboardPrompt, setStoryboardPrompt] = useState<string>("");
+  const [isExtractingStoryboard, setIsExtractingStoryboard] = useState(false);
   
   // === 使用自定义 Hook 管理分镜相关状态和操作 ===
   const {
@@ -293,6 +297,186 @@ function EditorContent() {
     }
   };
   
+  // 从剧本中提取分镜的函数
+  const extractStoryboardFromScript = async () => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法提取分镜");
+      return;
+    }
+    
+    if (!script || script.trim() === "") {
+      setError("剧本内容为空，无法提取分镜");
+      clearError();
+      return;
+    }
+    
+    setIsExtractingStoryboard(true);
+    try {
+      // 从localStorage获取API配置
+      let openaiKey = "";
+      let openaiModel = "";
+      let openaiUrl = "";
+      
+      try {
+        const settings = localStorage.getItem('video_editor_settings');
+        if (settings) {
+          const parsedSettings = JSON.parse(settings);
+          openaiKey = parsedSettings.openaiApiKey || "";
+          openaiModel = parsedSettings.openaiModel || "";
+          openaiUrl = parsedSettings.openaiUrl || "";
+          
+          console.log("从本地存储读取到OpenAI配置:", {
+            keyExists: !!openaiKey,
+            modelExists: !!openaiModel,
+            urlExists: !!openaiUrl
+          });
+        } else {
+          console.log("本地存储中没有找到API配置");
+          throw new Error("未找到OpenAI设置，请先在设置页面配置");
+        }
+      } catch (e) {
+        console.error("无法从本地存储获取API配置", e);
+        throw new Error("无法读取OpenAI设置，请重新配置");
+      }
+      
+      // 验证设置完整性
+      if (!openaiKey) {
+        throw new Error("未设置OpenAI API密钥，请在设置中配置");
+      }
+      
+      if (!openaiModel) {
+        throw new Error("未设置OpenAI模型，请在设置中配置");
+      }
+      
+      if (!openaiUrl) {
+        throw new Error("未设置OpenAI API地址，请在设置中配置");
+      }
+      
+      console.log(`使用模型 ${openaiModel} 提取分镜信息，API URL: ${openaiUrl}`);
+      
+      // 创建OpenAI客户端，传入URL
+      const { createLLMService } = await import('@/lib/features/llm');
+      const llmService = createLLMService("", "", openaiKey, openaiUrl);
+      
+      // 准备消息，确保使用分镜提示词，如果为空则使用默认分镜提示词
+      const messages = [
+        {
+          role: "system" as const,
+          content: storyboardPrompt || DEFAULT_STORYBOARD_PROMPT
+        },
+        {
+          role: "user" as const,
+          content: script
+        }
+      ];
+      
+      // 调用OpenAI API
+      console.log(`正在调用OpenAI API (${openaiModel}) 提取分镜...`);
+      const response = await llmService.chat(
+        messages, 
+        openaiModel,
+        "openai"
+      );
+      
+      // 解析响应
+      try {
+        let parsedResponse: { shots: any[] } = { shots: [] };
+        
+        // 尝试解析JSON
+        // 如果响应是纯JSON，直接解析
+        if (response.trim().startsWith('{') && response.trim().endsWith('}')) {
+          parsedResponse = JSON.parse(response);
+        } 
+        // 如果响应包含代码块，提取代码块中的JSON
+        else if (response.includes('```json')) {
+          const jsonMatch = response.match(/```json\n([\s\S]*?)\n```/);
+          if (jsonMatch && jsonMatch[1]) {
+            parsedResponse = JSON.parse(jsonMatch[1]);
+          }
+        }
+        // 如果上面方法都失败，尝试在响应中寻找任何JSON对象
+        else {
+          const jsonMatch = response.match(/{[\s\S]*?}/);
+          if (jsonMatch) {
+            parsedResponse = JSON.parse(jsonMatch[0]);
+          }
+        }
+        
+        if (!parsedResponse.shots || !Array.isArray(parsedResponse.shots) || parsedResponse.shots.length === 0) {
+          throw new Error("无法解析AI响应为有效的分镜信息");
+        }
+        
+        // 获取分镜数量
+        const shotCount = parsedResponse.shots.length;
+        
+        // 创建分镜内容文本数组，每个元素包含分镜描述和提示词
+        // replaceShotsFromText函数期望接收一个文本，其中每行代表一个分镜
+        const shotsTextContent = parsedResponse.shots.map((shot, index) => {
+          // 创建分镜内容字符串
+          // 格式为包含描述和提示词的JSON字符串
+          return JSON.stringify({
+            description: shot.description || '',
+            image_prompt: shot.image_prompt || ''
+          });
+        }).join('\n'); // 用换行符连接所有分镜
+        
+        console.log('准备替换的分镜数量:', parsedResponse.shots.length);
+        console.log('生成的分镜文本示例:', shotsTextContent.substring(0, 100) + '...');
+        
+        // 使用replaceShotsFromText函数替换所有分镜
+        await replaceShotsFromText(shotsTextContent);
+        
+        // 提取成功后切换到分镜标签页
+        setActiveTab("storyboard");
+        
+        // 显示成功消息，包含模型和分镜数量信息
+        setError(`成功使用${openaiModel}从剧本提取出${shotCount}个分镜`);
+        clearError();
+        
+      } catch (error) {
+        console.error("解析分镜信息失败:", error);
+        throw new Error("解析AI响应失败，请检查响应格式");
+      }
+      
+    } catch (error) {
+      console.error("提取分镜失败:", error);
+      let errorMsg = "";
+      
+      if (error instanceof Error) {
+        // 检查是否是API密钥错误
+        if (error.message.includes('API key')) {
+          errorMsg = "OpenAI API密钥无效或未设置，请在设置中配置正确的API密钥";
+        }
+        // 检查是否是配额错误
+        else if (error.message.includes('quota') || error.message.includes('rate limit')) {
+          errorMsg = "OpenAI API限额已用尽或速率受限，请稍后再试";
+        }
+        // 检查是否是模型错误
+        else if (error.message.includes('model')) {
+          errorMsg = "所选模型不可用或不存在，请在设置中检查模型配置";
+        }
+        // 检查是否是URL错误
+        else if (error.message.includes('URL') || error.message.includes('network') || error.message.includes('ECONNREFUSED')) {
+          errorMsg = "无法连接到OpenAI API，请检查API URL配置和网络连接";
+        }
+        // 检查是否是请求错误
+        else if (error.message.includes('status code 4') || error.message.includes('status code 5')) {
+          errorMsg = `请求失败: ${error.message}，请检查API配置`;
+        }
+        else {
+          errorMsg = error.message;
+        }
+      } else {
+        errorMsg = "从剧本提取分镜失败，请检查API配置和网络连接";
+      }
+      
+      setError(errorMsg);
+      clearError();
+    } finally {
+      setIsExtractingStoryboard(false);
+    }
+  };
+  
   // 返回项目列表
   const goToProjects = () => {
     router.push('/projects');
@@ -400,13 +584,19 @@ function EditorContent() {
             </TabsContent>
 
             {/* 剧本内容 */}
-            <TabsContent value="script">
+            <TabsContent value="script" className="mt-6">
               <ScriptEditor
                 script={script}
                 isUpdatingScript={isUpdatingScript}
                 updateScriptContent={updateScriptContent}
                 handleScriptBlur={handleScriptBlur}
                 saveScript={saveScript}
+                storyboardPrompt={storyboardPrompt}
+                setStoryboardPrompt={setStoryboardPrompt}
+                extractStoryboardFromScript={extractStoryboardFromScript}
+                isExtractingStoryboard={isExtractingStoryboard}
+                setError={setError}
+                clearError={clearError}
               />
             </TabsContent>
 
