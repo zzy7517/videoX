@@ -115,6 +115,7 @@ function EditorContent() {
     insertShot,
     deleteAllShots,
     replaceShotsFromText,
+    replaceShotsFromJson,
     
     // 错误处理
     setError,
@@ -358,6 +359,15 @@ function EditorContent() {
       const { createLLMService } = await import('@/lib/features/llm');
       const llmService = createLLMService("", "", openaiKey, openaiUrl);
       
+      // 准备角色信息
+      const charactersText = Object.keys(characters).length > 0 
+        ? "已提取的角色信息：\n" + 
+          Object.entries(characters)
+            .map(([name, description]) => `角色 "${name}": ${description}`)
+            .join('\n') + 
+          "\n\n以下是剧本内容：\n"
+        : "";
+      
       // 准备消息，确保使用分镜提示词，如果为空则使用默认分镜提示词
       const messages = [
         {
@@ -366,7 +376,7 @@ function EditorContent() {
         },
         {
           role: "user" as const,
-          content: script
+          content: charactersText + script
         }
       ];
       
@@ -409,22 +419,16 @@ function EditorContent() {
         // 获取分镜数量
         const shotCount = parsedResponse.shots.length;
         
-        // 创建分镜内容文本数组，每个元素包含分镜描述和提示词
-        // replaceShotsFromText函数期望接收一个文本，其中每行代表一个分镜
-        const shotsTextContent = parsedResponse.shots.map((shot, index) => {
-          // 创建分镜内容字符串
-          // 格式为包含描述和提示词的JSON字符串
-          return JSON.stringify({
-            description: shot.description || '',
-            image_prompt: shot.image_prompt || ''
-          });
-        }).join('\n'); // 用换行符连接所有分镜
-        
+        // 直接使用replaceShotsFromJson函数处理JSON数据
+        // 这样可以确保分镜的description和image_prompt字段
+        // 被正确映射到系统的content和t2i_prompt字段
         console.log('准备替换的分镜数量:', parsedResponse.shots.length);
-        console.log('生成的分镜文本示例:', shotsTextContent.substring(0, 100) + '...');
         
-        // 使用replaceShotsFromText函数替换所有分镜
-        await replaceShotsFromText(shotsTextContent);
+        // 将解析后的分镜数据重新打包成JSON字符串
+        const shotsJson = JSON.stringify(parsedResponse);
+        
+        // 使用replaceShotsFromJson函数替换所有分镜
+        await replaceShotsFromJson(shotsJson);
         
         // 提取成功后切换到分镜标签页
         setActiveTab("storyboard");

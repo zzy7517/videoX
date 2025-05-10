@@ -10,6 +10,7 @@ import {
   insertShot as apiInsertShot,
   deleteAllShots as apiDeleteAllShots,
   replaceShotsFromText as apiReplaceShotsFromText,
+  replaceShotsFromJson as apiReplaceShotsFromJson,
   getAllShots,
   getProjectInfo,
   updateScript as apiUpdateScript,
@@ -534,10 +535,6 @@ export const useShotManager = () => {
       return [];
     }
 
-    if (shots.length > 0 && !confirm("此操作将会替换所有现有分镜，确定继续吗？")) {
-      return [];
-    }
-
     // 清除所有保存定时器
     Object.values(saveTimersRef.current).forEach(clearTimeout);
     saveTimersRef.current = {};
@@ -551,6 +548,42 @@ export const useShotManager = () => {
     } catch (error) {
       console.error("批量替换分镜失败:", error);
       const errorMsg = error instanceof Error ? error.message : "从文本导入分镜失败";
+      setError(errorMsg);
+      clearError();
+      throw error;
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  }, [shots.length, clearError, currentProjectId]);
+
+  /**
+   * 从JSON批量替换分镜
+   */
+  const replaceShotsFromJson = useCallback(async (jsonData: string) => {
+    if (!currentProjectId) {
+      console.error("未选择项目，无法导入分镜");
+      return [];
+    }
+    
+    if (!jsonData.trim()) {
+      setError("JSON数据为空，无法导入");
+      clearError();
+      return [];
+    }
+
+    // 清除所有保存定时器
+    Object.values(saveTimersRef.current).forEach(clearTimeout);
+    saveTimersRef.current = {};
+
+    setIsBulkUpdating(true);
+    setError("");
+    try {
+      const newShots = await apiReplaceShotsFromJson(jsonData, currentProjectId);
+      setShots(newShots);
+      return newShots;
+    } catch (error) {
+      console.error("从JSON批量替换分镜失败:", error);
+      const errorMsg = error instanceof Error ? error.message : "从JSON导入分镜失败";
       setError(errorMsg);
       clearError();
       throw error;
@@ -725,6 +758,7 @@ export const useShotManager = () => {
     insertShot,
     deleteAllShots,
     replaceShotsFromText,
+    replaceShotsFromJson,
     
     // 剧本和角色相关
     script,

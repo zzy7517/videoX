@@ -557,4 +557,92 @@ export const updateCharacters = async (
     console.error('更新角色信息请求失败:', error);
     throw error;
   }
-} 
+}
+
+/**
+ * 从JSON数据批量替换分镜
+ * @param jsonData 包含分镜数据的JSON字符串
+ * @param projectId 项目ID
+ * @returns 返回新创建的分镜列表
+ */
+export const replaceShotsFromJson = async (jsonData: string, projectId: number): Promise<Shot[]> => {
+  if (!projectId) {
+    console.error('调用replaceShotsFromJson必须提供有效的projectId');
+    return [];
+  }
+
+  let parsedShots = [];
+  try {
+    // 解析JSON数据
+    const parsedData = JSON.parse(jsonData);
+    
+    // 检查是否有shots数组
+    if (parsedData && parsedData.shots && Array.isArray(parsedData.shots)) {
+      parsedShots = parsedData.shots;
+      console.log(`成功解析JSON，获取到${parsedShots.length}个分镜数据`);
+    } else {
+      console.error('JSON数据中未找到有效的shots数组');
+      return [];
+    }
+  } catch (error) {
+    console.error('解析JSON数据失败:', error);
+    return [];
+  }
+
+  // 首先获取当前项目信息以保存原有的剧本和角色信息
+  let script = "";
+  let characters = {};
+  
+  try {
+    const projectInfo = await getProjectInfo(projectId);
+    script = projectInfo.script || "";
+    characters = projectInfo.characters || {};
+    console.log('保留原有剧本和角色信息成功', {
+      scriptLength: script.length,
+      charactersCount: Object.keys(characters).length
+    });
+  } catch (error) {
+    console.error('获取原有项目信息失败，无法保留剧本和角色:', error);
+    // 继续执行，使用空值
+  }
+
+  // 准备批量更新的数据格式
+  const bulkUpdateData = {
+    shots: parsedShots.map((shot: any) => ({
+      content: shot.original_text || shot.description || shot.content || '',
+      t2i_prompt: shot.image_prompt || shot.t2i_prompt || '',
+      characters: shot.characters || []
+    })),
+    script: script,
+    characters: characters
+  };
+
+  // 构建URL
+  const url = `${API_BASE_URL}/shots/?project_id=${projectId}`;
+    
+  // 调用后端批量替换 API
+  const response = await fetchWithAuth(url, { // PUT /shots/
+    method: 'PUT',
+    body: JSON.stringify(bulkUpdateData),
+  });
+
+  if (!response.ok) {
+    throw new Error(`批量替换分镜失败：状态码 ${response.status}`);
+  }
+
+  // 处理后端返回的数据
+  const data = await response.json();
+  // 如果是ProjectInfo对象（包含shots数组）
+  if (data && typeof data === 'object' && 'shots' in data && Array.isArray(data.shots)) {
+    return data.shots;
+  }
+  // 如果是直接返回的数组
+  else if (Array.isArray(data)) {
+    return data;
+  }
+  // 其他情况
+  else {
+    console.error('后端返回的分镜数据格式不正确', data);
+    return [];
+  }
+}; 

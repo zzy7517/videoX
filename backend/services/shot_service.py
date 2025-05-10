@@ -381,6 +381,7 @@ def bulk_replace_shots(db: Session, shots_data: list, user_id: int, project_id: 
         for shot_input in shots_data:
             new_shot = models.Shot(
                 content=shot_input.content,
+                characters=shot_input.characters,
                 t2i_prompt=getattr(shot_input, 't2i_prompt', None) # 安全地获取 t2i_prompt
             )
             db.add(new_shot)

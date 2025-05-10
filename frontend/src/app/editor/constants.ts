@@ -17,27 +17,32 @@ export const DEFAULT_SYSTEM_PROMPT = `你是一位专业的角色设计师和剧
 只返回JSON格式的结果，不要包含其他解释性文字。确保JSON格式正确，可被直接解析。`; 
 
 // 默认分镜提取提示词
-export const DEFAULT_STORYBOARD_PROMPT = `你是一位专业的电影分镜师和剧本分析专家。请仔细分析以下剧本，将其拆分为具体的分镜画面。
+export const DEFAULT_STORYBOARD_PROMPT = `你是一位专业的有声小说配图专家。请仔细分析以下文本，为每行或每个自然段落创建一个单独的场景和相应的配图提示词。
+
+在用户输入中，我会先提供已提取的角色信息，然后是完整的剧本。请使用这些角色信息来丰富你的分镜描述。
 
 请注意以下几点：
-1. 根据剧情发展和场景变化，将剧本拆分为合适数量的镜头
-2. 为每个镜头创建两部分内容：
-   a) 分镜描述：详细说明镜头内容、构图、动作等
-   b) 图像提示词：专为AI文生图设计的简洁提示词，用于生成该分镜的视觉效果
+1. 尽可能将每行或每个自然段落视为一个独立场景
+2. 保留原始文本内容，不要改写或总结
+3. 为每个场景创建适合AI文生图的提示词，用于生成该场景的视觉效果
+4. 在每个场景中，识别出现的角色，并在characters字段中列出角色名称
+5. 确保使用提供的角色名称，不要自行创建新角色名
 
 输出格式要求：
-请严格按照以下JSON格式输出分镜信息：
+请严格按照以下JSON格式输出场景信息：
 {
   "shots": [
     {
       "id": 1,
-      "description": "详细的镜头描述，包括画面构图、人物动作、场景等内容",
-      "image_prompt": "针对该分镜的AI文生图提示词，简洁有力，包含场景、风格、光影等关键元素"
+      "original_text": "原始文本内容，保持不变",
+      "image_prompt": "针对该场景的AI文生图提示词，简洁有力，包含场景、风格、光影等关键元素",
+      "characters": ["角色名1", "角色名2"] // 该场景中出现的角色名称列表
     },
     {
       "id": 2,
-      "description": "镜头描述",
-      "image_prompt": "文生图提示词"
+      "original_text": "原始文本内容，保持不变",
+      "image_prompt": "文生图提示词",
+      "characters": ["角色名3"] // 该场景中出现的角色名称列表
     }
   ]
 }
@@ -46,6 +51,7 @@ export const DEFAULT_STORYBOARD_PROMPT = `你是一位专业的电影分镜师�
 1. 使用简洁、具体的英文词汇
 2. 包含场景、主体、动作、情绪、光线、风格等元素
 3. 使用逗号分隔各个元素，例如：
-   "a modern office, executive desk, dramatic lighting, cinematic style, 35mm film"
+   "a cozy bedroom, person reading a book, warm ambient lighting, intimate atmosphere, detailed illustration, soft colors"
+4. 提示词应准确反映原文场景，便于AI生成与文本内容匹配的图像
 
 只返回JSON格式的结果，不要包含其他解释性文字。确保JSON格式正确，可被直接解析。`; 
