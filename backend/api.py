@@ -7,7 +7,7 @@ from datetime import datetime
 from .logger import setup_logger, log_exception
 from fastapi.middleware.cors import CORSMiddleware
 from .middleware import LoggingMiddleware, get_current_user_from_request
-from .services import shot_service, user_config_service, user_shot_service
+from .services import shot_service, user_config_service, user_shot_service, user_prompt_service
 from .api_auth import auth_router  # 导入认证路由器
 from .middleware.auth import AuthMiddleware  # 导入认证中间件
 
@@ -191,6 +191,24 @@ class ConfigResponse(TextContentBase):
         
         # 如果是字典或者其他对象，直接使用父类方法
         return super().model_validate(obj, **kwargs)
+
+# --- 提示词相关模型 ---
+class UserPromptResponse(BaseModel):
+    """用户提示词响应模型"""
+    id: Optional[int] = None
+    user_id: Optional[int] = None
+    character_prompt: Optional[str] = None
+    shot_prompt: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class UserPromptUpdate(BaseModel):
+    """用户提示词更新模型"""
+    character_prompt: Optional[str] = None
+    shot_prompt: Optional[str] = None
 
 # --- API 路由 ---
 main_router = APIRouter(tags=["main"])
@@ -672,6 +690,66 @@ async def update_user_config(text: TextContentBase, request: Request, db: Sessio
     )
     
     return updated_config
+
+# --- 提示词 (Prompts) 相关 API ---
+
+@main_router.get("/prompts/", response_model=UserPromptResponse)
+async def get_user_prompts(request: Request, db: Session = Depends(database.get_db)):
+    """
+    获取用户的提示词
+    
+    如果用户没有自定义提示词，返回空对象
+    """
+    # 获取当前用户
+    user = await get_current_user_from_request(request, db)
+    user_id = user.user_id if user else None
+    
+    logger.info(f"用户 {user_id if user_id else '未登录'} 获取提示词")
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="需要登录才能获取提示词")
+    
+    # 获取用户提示词
+    user_prompt = user_prompt_service.get_user_prompt(db, user_id)
+    
+    # 如果用户没有提示词记录，返回空对象
+    if not user_prompt:
+        return UserPromptResponse()
+    
+    return user_prompt
+
+@main_router.put("/prompts/", response_model=UserPromptResponse)
+async def update_user_prompts(
+    prompt_update: UserPromptUpdate, 
+    request: Request, 
+    db: Session = Depends(database.get_db)
+):
+    """
+    更新用户的提示词
+    
+    可以只更新character_prompt或shot_prompt中的一个
+    """
+    # 获取当前用户
+    user = await get_current_user_from_request(request, db)
+    user_id = user.user_id if user else None
+    
+    logger.info(f"用户 {user_id if user_id else '未登录'} 更新提示词")
+    
+    if not user_id:
+        raise HTTPException(status_code=401, detail="需要登录才能更新提示词")
+    
+    # 更新用户提示词
+    updated_prompt = user_prompt_service.update_user_prompt(
+        db, 
+        user_id, 
+        character_prompt=prompt_update.character_prompt, 
+        shot_prompt=prompt_update.shot_prompt
+    )
+    
+    if not updated_prompt:
+        raise HTTPException(status_code=404, detail="更新提示词失败")
+    
+    return updated_prompt
 
 # 注册主路由
 app.include_router(main_router)

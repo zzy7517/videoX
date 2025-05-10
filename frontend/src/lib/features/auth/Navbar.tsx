@@ -25,9 +25,12 @@ import { replaceShotsFromText } from '@/lib/features/shot/shotApi';
 
 interface NavbarProps {
   title?: string;
+  goBack?: () => void;
+  error?: string | null;
+  projectId?: number | null;
 }
 
-export function Navbar({ title = 'VideoX' }: NavbarProps) {
+export function Navbar({ title = 'VideoX', goBack, error, projectId }: NavbarProps) {
   const { isAuthenticated, user, logout } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);

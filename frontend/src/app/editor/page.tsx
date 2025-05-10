@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 // 导入自定义 Hook
 import { useShotManager } from '@/lib/features/shot/useShotManager';
+// 导入提示词管理 Hook
+import { usePromptManager } from '@/lib/features/prompt/usePromptManager';
 // 导入认证相关组件
 import { useAuth, ProtectedRoute } from '@/lib/features/auth';
 import { Navbar } from '@/lib/features/auth/Navbar';
@@ -17,6 +19,9 @@ import { StoryboardEditor } from './components/StoryboardEditor';
 
 // 导入常量
 import { DEFAULT_SYSTEM_PROMPT, DEFAULT_STORYBOARD_PROMPT } from './constants';
+
+// 使用别名以保持一致性
+const DEFAULT_SHOT_PROMPT = DEFAULT_STORYBOARD_PROMPT;
 
 /**
  * 分镜编辑页面
@@ -72,6 +77,19 @@ function EditorContent() {
   // 添加当前标签页状态
   const [activeTab, setActiveTab] = useState("storyboard");
   
+  // 使用提示词管理Hook
+  const {
+    characterPrompt, // 角色提示词（优先使用自定义的，没有则使用默认的）
+    shotPrompt, // 分镜提示词（优先使用自定义的，没有则使用默认的）
+    hasCustomCharacterPrompt, // 是否有自定义角色提示词
+    hasCustomShotPrompt, // 是否有自定义分镜提示词
+    saveCharacterPrompt, // 保存角色提示词
+    saveShotPrompt, // 保存分镜提示词
+    resetToDefaultCharacterPrompt, // 重置角色提示词为默认
+    resetToDefaultShotPrompt, // 重置分镜提示词为默认
+    isLoading: isLoadingPrompts // 提示词加载状态
+  } = usePromptManager();
+  
   // 添加系统提示和提取角色相关状态
   const [systemPrompt, setSystemPrompt] = useState<string>("");
   const [isExtractingCharacters, setIsExtractingCharacters] = useState(false);
@@ -80,6 +98,33 @@ function EditorContent() {
   const [storyboardPrompt, setStoryboardPrompt] = useState<string>("");
   const [isExtractingStoryboard, setIsExtractingStoryboard] = useState(false);
   
+  // 初始化提示词输入框的值
+  useEffect(() => {
+    // 只在初始加载时设置一次值，避免覆盖用户的输入
+    if (characterPrompt) {
+      setSystemPrompt(characterPrompt);
+    }
+    if (shotPrompt) {
+      setStoryboardPrompt(shotPrompt);
+    }
+  }, [characterPrompt, shotPrompt]);
+
+  // 监听characterPrompt变化为默认值的情况
+  useEffect(() => {
+    // 如果characterPrompt是默认值且之前有自定义值，则更新systemPrompt
+    if (characterPrompt === DEFAULT_SYSTEM_PROMPT && !hasCustomCharacterPrompt) {
+      setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+    }
+  }, [characterPrompt, hasCustomCharacterPrompt]);
+
+  // 监听shotPrompt变化为默认值的情况
+  useEffect(() => {
+    // 如果shotPrompt是默认值且之前有自定义值，则更新storyboardPrompt
+    if (shotPrompt === DEFAULT_SHOT_PROMPT && !hasCustomShotPrompt) {
+      setStoryboardPrompt(DEFAULT_SHOT_PROMPT);
+    }
+  }, [shotPrompt, hasCustomShotPrompt]);
+
   // === 使用自定义 Hook 管理分镜相关状态和操作 ===
   const {
     shots,
@@ -372,7 +417,7 @@ function EditorContent() {
       const messages = [
         {
           role: "system" as const,
-          content: storyboardPrompt || DEFAULT_STORYBOARD_PROMPT
+          content: storyboardPrompt || DEFAULT_SHOT_PROMPT
         },
         {
           role: "user" as const,
@@ -584,6 +629,8 @@ function EditorContent() {
                 insertShot={insertShot}
                 addShot={addShot}
                 deleteAllShots={deleteAllShots}
+                setError={setError}
+                clearError={clearError}
               />
             </TabsContent>
 
@@ -601,6 +648,9 @@ function EditorContent() {
                 isExtractingStoryboard={isExtractingStoryboard}
                 setError={setError}
                 clearError={clearError}
+                saveShotPrompt={saveShotPrompt}
+                resetToDefaultShotPrompt={resetToDefaultShotPrompt}
+                hasCustomShotPrompt={hasCustomShotPrompt}
               />
             </TabsContent>
 
@@ -618,6 +668,9 @@ function EditorContent() {
                 extractCharactersFromScript={extractCharactersFromScript}
                 setError={setError}
                 clearError={clearError}
+                saveCharacterPrompt={saveCharacterPrompt}
+                resetToDefaultCharacterPrompt={resetToDefaultCharacterPrompt}
+                hasCustomCharacterPrompt={hasCustomCharacterPrompt}
               />
             </TabsContent>
           </Tabs>

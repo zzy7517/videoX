@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { useState, useCallback } from "react";
 import { DEFAULT_STORYBOARD_PROMPT } from '../constants';
 
 interface ScriptEditorProps {
@@ -15,6 +16,9 @@ interface ScriptEditorProps {
   isExtractingStoryboard: boolean;
   setError: (error: string) => void;
   clearError: () => void;
+  saveShotPrompt?: (prompt: string) => Promise<boolean>;
+  resetToDefaultShotPrompt?: () => Promise<boolean>;
+  hasCustomShotPrompt?: boolean;
 }
 
 export function ScriptEditor({
@@ -28,8 +32,38 @@ export function ScriptEditor({
   extractStoryboardFromScript,
   isExtractingStoryboard,
   setError,
-  clearError
+  clearError,
+  saveShotPrompt,
+  resetToDefaultShotPrompt,
+  hasCustomShotPrompt
 }: ScriptEditorProps) {
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
+
+  const handleSavePrompt = useCallback(async () => {
+    if (!saveShotPrompt) return;
+    
+    setIsSavingPrompt(true);
+    try {
+      await saveShotPrompt(storyboardPrompt);
+    } finally {
+      setIsSavingPrompt(false);
+    }
+  }, [storyboardPrompt, saveShotPrompt]);
+
+  const handleResetPrompt = useCallback(async () => {
+    if (!resetToDefaultShotPrompt) return;
+    
+    setIsSavingPrompt(true);
+    try {
+      const success = await resetToDefaultShotPrompt();
+      if (success) {
+        setStoryboardPrompt(DEFAULT_STORYBOARD_PROMPT);
+      }
+    } finally {
+      setIsSavingPrompt(false);
+    }
+  }, [resetToDefaultShotPrompt, setStoryboardPrompt]);
+
   return (
     <Card className="backdrop-blur-sm bg-white/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700">
       <CardHeader>
@@ -41,9 +75,35 @@ export function ScriptEditor({
         <div className="space-y-4">
           {/* 提取分镜Prompt输入框 */}
           <div className="space-y-2 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800 mb-4">
-            <label htmlFor="extract-storyboard-prompt" className="block text-sm font-medium text-blue-700 dark:text-blue-300">
-              提取分镜Prompt
-            </label>
+            <div className="flex justify-between items-center mb-1">
+              <label htmlFor="extract-storyboard-prompt" className="block text-sm font-medium text-blue-700 dark:text-blue-300">
+                提取分镜Prompt
+              </label>
+              
+              {saveShotPrompt && (
+                <div className="flex space-x-2">
+                  {hasCustomShotPrompt && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleResetPrompt}
+                      disabled={isSavingPrompt || isExtractingStoryboard}
+                      className="text-xs py-1 h-7"
+                    >
+                      恢复默认
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={handleSavePrompt}
+                    disabled={isSavingPrompt || isExtractingStoryboard}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs py-1 h-7"
+                  >
+                    {isSavingPrompt ? "保存中..." : (hasCustomShotPrompt ? "更新提示词" : "保存提示词")}
+                  </Button>
+                </div>
+              )}
+            </div>
             <Textarea
               id="extract-storyboard-prompt"
               className="h-24 font-mono text-sm bg-white dark:bg-slate-800 border-blue-200 dark:border-blue-700"

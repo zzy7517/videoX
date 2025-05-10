@@ -31,6 +31,8 @@ interface StoryboardEditorProps {
   insertShot: (shotId: number, position: 'above' | 'below') => void;
   addShot: () => void;
   deleteAllShots: () => void;
+  setError: (message: string) => void;
+  clearError: () => void;
 }
 
 export function StoryboardEditor({
@@ -47,7 +49,9 @@ export function StoryboardEditor({
   deleteShot,
   insertShot,
   addShot,
-  deleteAllShots
+  deleteAllShots,
+  setError,
+  clearError
 }: StoryboardEditorProps) {
 
   return (

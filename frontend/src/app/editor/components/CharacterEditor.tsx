@@ -19,6 +19,9 @@ interface CharacterEditorProps {
   extractCharactersFromScript: () => Promise<void>;
   setError: (error: string) => void;
   clearError: () => void;
+  saveCharacterPrompt?: (prompt: string) => Promise<boolean>;
+  resetToDefaultCharacterPrompt?: () => Promise<boolean>;
+  hasCustomCharacterPrompt?: boolean;
 }
 
 export function CharacterEditor({
@@ -32,7 +35,10 @@ export function CharacterEditor({
   setSystemPrompt,
   extractCharactersFromScript,
   setError,
-  clearError
+  clearError,
+  saveCharacterPrompt,
+  resetToDefaultCharacterPrompt,
+  hasCustomCharacterPrompt
 }: CharacterEditorProps) {
   
   // 角色编辑状态
@@ -40,6 +46,7 @@ export function CharacterEditor({
   const [characterDescription, setCharacterDescription] = useState("");
   const [editingCharacterId, setEditingCharacterId] = useState<string | null>(null);
   const [editingCharacterText, setEditingCharacterText] = useState<string>("");
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false);
   
   // 初始化编辑文本
   useEffect(() => {
@@ -90,6 +97,34 @@ export function CharacterEditor({
     updateCharactersInfo(newCharacters);
   }, [characters, updateCharactersInfo]);
 
+  // 新增：处理保存提示词
+  const handleSavePrompt = useCallback(async () => {
+    if (!saveCharacterPrompt) return;
+    
+    setIsSavingPrompt(true);
+    try {
+      await saveCharacterPrompt(systemPrompt);
+    } finally {
+      setIsSavingPrompt(false);
+    }
+  }, [systemPrompt, saveCharacterPrompt]);
+
+  // 新增：处理重置为默认提示词
+  const handleResetPrompt = useCallback(async () => {
+    if (!resetToDefaultCharacterPrompt) return;
+    
+    setIsSavingPrompt(true);
+    try {
+      const success = await resetToDefaultCharacterPrompt();
+      if (success) {
+        // 成功重置后，立即更新输入框内容为默认值
+        setSystemPrompt(DEFAULT_SYSTEM_PROMPT);
+      }
+    } finally {
+      setIsSavingPrompt(false);
+    }
+  }, [resetToDefaultCharacterPrompt, setSystemPrompt]);
+
   return (
     <Card className="backdrop-blur-sm bg-white/50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700">
       <CardHeader>
@@ -101,9 +136,35 @@ export function CharacterEditor({
         <div className="space-y-4">
           {/* 提取角色Prompt输入框 */}
           <div className="space-y-2 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800 mb-4">
-            <label htmlFor="extract-characters-prompt" className="block text-sm font-medium text-purple-700 dark:text-purple-300">
-              提取角色Prompt
-            </label>
+            <div className="flex justify-between items-center mb-1">
+              <label htmlFor="extract-characters-prompt" className="block text-sm font-medium text-purple-700 dark:text-purple-300">
+                提取角色Prompt
+              </label>
+              
+              {saveCharacterPrompt && (
+                <div className="flex space-x-2">
+                  {hasCustomCharacterPrompt && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleResetPrompt}
+                      disabled={isSavingPrompt || isExtractingCharacters}
+                      className="text-xs py-1 h-7"
+                    >
+                      恢复默认
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={handleSavePrompt}
+                    disabled={isSavingPrompt || isExtractingCharacters}
+                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs py-1 h-7"
+                  >
+                    {isSavingPrompt ? "保存中..." : (hasCustomCharacterPrompt ? "更新提示词" : "保存提示词")}
+                  </Button>
+                </div>
+              )}
+            </div>
             <Textarea
               id="extract-characters-prompt"
               className="h-24 font-mono text-sm bg-white dark:bg-slate-800 border-purple-200 dark:border-purple-700"

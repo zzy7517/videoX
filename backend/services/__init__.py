@@ -5,4 +5,5 @@
 from . import shot_service
 from . import user_config_service
 from . import user_shot_service
-from . import user_service 
+from . import user_service
+from . import user_prompt_service 
